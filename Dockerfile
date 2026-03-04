@@ -1,4 +1,4 @@
-from python:3.9-slim-bullseye
+FROM python:3.9-slim-bullseye
 
 COPY install.sh /install.sh
 
