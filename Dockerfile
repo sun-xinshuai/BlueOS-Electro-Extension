@@ -33,6 +33,9 @@ LABEL requirements=""
 
 WORKDIR /app
 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc g++ make libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
 # Install dependencies
 COPY serial/backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
