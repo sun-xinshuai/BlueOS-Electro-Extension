@@ -1,0 +1,10 @@
+{
+  "name": "Serial Monitor",
+  "description": "Real-time UART serial data viewer. Reads from Raspberry Pi serial ports and displays in browser.",
+  "icon": "mdi-serial-port",
+  "company": "BlueOS Extensions",
+  "version": "1.0.0",
+  "webpage": "http://[BLUEOS_IP]:5000",
+  "api": "http://[BLUEOS_IP]:5000/docs",
+  "docker": "your-dockerhub/blueos-serial-monitor:latest"
+}
