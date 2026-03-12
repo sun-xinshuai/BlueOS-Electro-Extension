@@ -46,4 +46,4 @@ LABEL links='{\
 }'
 LABEL requirements="core >= 1.1"
 
-ENTRYPOINT ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "80", "--app-dir", "/app"]
+ENTRYPOINT ["sh", "-c", "cd /app && uvicorn main:app --host 0.0.0.0 --port 80"]

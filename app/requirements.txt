@@ -1,12 +1,12 @@
 # web 框架
-fastapi==0.111.0
-pydantic==2.7.1
-starlette==0.37.2
+fastapi==0.63.0
+pydantic==1.10.13
+starlette==0.13.6
 # web 服务器（纯 Python，无 C 扩展）
-uvicorn==0.29.0
+uvicorn==0.13.4
 # 静态文件需要
-aiofiles==23.2.1
+aiofiles==0.8.0
 # 串口
 pyserial==3.5
 # 日志
-loguru==0.7.2
+loguru==0.5.3
