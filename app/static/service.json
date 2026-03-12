@@ -1,9 +1,0 @@
-{
-    "name":"Water serial ",
-    "description":"Driver for Water using serial connection",
-    "icon":"mdi-dots-vertical",
-    "company":"Blue Robotics",
-    "version":"1.0.5",
-    "webpage":"https://github.com/sun-xinshuai/BlueOS-Electro-Extension",
-    "api":""
- }

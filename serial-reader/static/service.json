@@ -1,0 +1,9 @@
+{
+    "name": "Serial Monitor",
+    "description": "实时读取树莓派串口数据并在浏览器显示",
+    "icon": "mdi-serial-port",
+    "company": "Your Company",
+    "version": "1.0.0",
+    "webpage": "/",
+    "api": "/get_status"
+}

@@ -1,24 +1,26 @@
 FROM python:3.9-slim-bullseye
 
-# 用 pip + requirements.txt 安装，精确控制依赖，避免 setup.py 乱拉 ujson 等 C 扩展
-COPY app/requirements.txt /requirements.txt
-RUN pip install --no-cache-dir -r /requirements.txt
+# Create default user folder (same as DVL project)
+RUN mkdir -p /home/pi
 
-COPY app /app
-
-EXPOSE 80/tcp
+# Install serial reader service
+COPY serial-reader /home/pi/serial-reader
+RUN cd /home/pi/serial-reader && pip3 install .
 
 LABEL version="1.0.0"
 LABEL permissions='\
 {\
   "ExposedPorts": {\
-    "80/tcp": {}\
+    "9000/tcp": {}\
   },\
   "HostConfig": {\
     "Privileged": true,\
     "Binds": ["/dev:/dev"],\
+    "ExtraHosts": [\
+      "host.docker.internal:host-gateway"\
+    ],\
     "PortBindings": {\
-      "80/tcp": [\
+      "9000/tcp": [\
         {\
           "HostPort": ""\
         }\
@@ -33,18 +35,21 @@ LABEL authors='[\
     }\
 ]'
 LABEL company='{\
-    "about": "",\
-    "name": "Your Company",\
-    "email": "you@example.com"\
-}'
+        "about": "",\
+        "name": "Your Company",\
+        "email": "you@example.com"\
+    }'
 LABEL type="tool"
-LABEL tags='["serial", "uart", "monitor"]'
+LABEL tags='[\
+        "serial",\
+        "uart",\
+        "monitor"\
+    ]'
 LABEL readme='https://raw.githubusercontent.com/your-repo/main/README.md'
 LABEL links='{\
-    "website": "https://github.com/your-repo",\
-    "support": "https://github.com/your-repo/issues"\
-}'
+        "website": "https://github.com/your-repo",\
+        "support": "https://github.com/your-repo/issues"\
+    }'
 LABEL requirements="core >= 1.1"
-ENV PYTHONIOENCODING=utf-8
-ENV LANG=C.UTF-8
-ENTRYPOINT ["sh", "-c", "cd /app && uvicorn main:app --host 0.0.0.0 --port 80"]
+
+ENTRYPOINT /home/pi/serial-reader/main.py
