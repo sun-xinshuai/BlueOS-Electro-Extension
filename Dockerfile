@@ -45,5 +45,6 @@ LABEL links='{\
     "support": "https://github.com/your-repo/issues"\
 }'
 LABEL requirements="core >= 1.1"
-
+ENV PYTHONIOENCODING=utf-8
+ENV LANG=C.UTF-8
 ENTRYPOINT ["sh", "-c", "cd /app && uvicorn main:app --host 0.0.0.0 --port 80"]

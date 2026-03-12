@@ -4,16 +4,17 @@ FastAPI 主程序
 - WebSocket：/ws  实时推送串口数据
 - 静态文件：/ 托管前端页面
 """
-
+import uvicorn
 import asyncio
 import json
 import time
-
+from typing import Any
 import serial.tools.list_ports
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
-
+from fastapi.responses import HTMLResponse, FileResponse
+from fastapi_versioning import VersionedFastAPI, version
 # 从 Myserial 导入需要的东西
 from Myserial import (
     SerialConfig,
@@ -95,7 +96,17 @@ async def clear_history():
     await broadcast({"type": "clear"})   # ✅ 直接调用模块函数
     return {"ok": True}
 
-
+@app.get("/register_service")
+async def register_service():
+    return {
+        "name": "Serial Monitor",
+        "description": "实时串口数据监控",
+        "icon": "mdi-serial-port",
+        "company": "Your Company",
+        "version": "1.0.0",
+        "webpage": "/",
+        "api": "/docs",
+    }
 # ── WebSocket 接口 ────────────────────────────────────────────────────────────
 
 @app.websocket("/ws")
@@ -136,5 +147,14 @@ async def websocket_endpoint(websocket: WebSocket):
 
 # ── 静态文件（前端页面） ──────────────────────────────────────────────────────
 
-# 放在最后，避免路由被 "/" 拦截
+app = VersionedFastAPI(app, version="1.0.0", prefix_format="/v{major}.{minor}", enable_latest=True)
+
 app.mount("/", StaticFiles(directory="/app/static", html=True), name="static")
+
+@app.get("/", response_class=FileResponse)
+async def root() -> Any:
+        return "index.html"
+
+if __name__ == "__main__":
+    # Running uvicorn with log disabled so loguru can handle it
+    uvicorn.run(app, host="0.0.0.0", port=80, log_config=None)
