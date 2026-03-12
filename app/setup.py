@@ -14,19 +14,19 @@ setup(
     description="BlueOS Serial Reader Extension",
     license="MIT",
     install_requires=[
-        # ✅ fastapi 和 pydantic 版本必须配套
+        # fastapi 和 pydantic 版本必须配套
         "fastapi==0.111.0",
         "pydantic==2.7.1",
-        "starlette==0.37.2",      # fastapi 0.111 依赖的版本
-        # ✅ web 服务器
+        "starlette==0.37.2",
+        # web 服务器（纯 Python 版，不依赖 C 扩展）
         "uvicorn==0.29.0",
-        "aiofiles==23.2.1",       # StaticFiles 需要
-        # ✅ 串口
+        "aiofiles==23.2.1",
+        # 串口
         "pyserial==3.5",
-        # ✅ 日志
+        # 日志
         "loguru==0.7.2",
-        # ✅ C扩展（Dockerfile里已装gcc，这里可以安全使用）
-        "httptools==0.6.1",
-        "uvloop==0.19.0",
+        # 已移除 uvloop 和 httptools：
+        # ARM 平台上编译后被安装为 UNKNOWN，setup.py 找不到报错。
+        # uvicorn 不依赖它们也可以正常运行。
     ],
 )

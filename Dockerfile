@@ -1,21 +1,12 @@
 FROM python:3.9-slim-bullseye
 
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    gcc \
-    g++ \
-    make \
-    libssl-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-
+# 不再需要 gcc，所有依赖都是纯 Python wheel
 COPY app /app
 RUN python /app/setup.py install
 
 EXPOSE 80/tcp
 
-LABEL version="1.0.1"
-# TODO: Add a Volume for persistence across boots
+LABEL version="1.0.0"
 LABEL permissions='\
 {\
   "ExposedPorts": {\
@@ -23,7 +14,7 @@ LABEL permissions='\
   },\
   "HostConfig": {\
     "Privileged": true,\
-    "Binds":["/root/.config:/root/.config"],\
+    "Binds": ["/dev:/dev"],\
     "PortBindings": {\
       "80/tcp": [\
         {\
@@ -35,24 +26,22 @@ LABEL permissions='\
 }'
 LABEL authors='[\
     {\
-        "name": "Willian Galvani",\
-        "email": "willian@bluerobotics.com"\
+        "name": "Your Name",\
+        "email": "you@example.com"\
     }\
 ]'
 LABEL company='{\
-        "about": "",\
-        "name": "Blue Robotics",\
-        "email": "support@bluerobotics.com"\
-    }'
-LABEL type="example"
-LABEL tags='[\
-        "interaction"\
-    ]'
-LABEL readme='https://raw.githubusercontent.com/Williangalvani/BlueOS-examples/{tag}/example5-gpio-control/Readme.md'
+    "about": "",\
+    "name": "Your Company",\
+    "email": "you@example.com"\
+}'
+LABEL type="tool"
+LABEL tags='["serial", "uart", "monitor"]'
+LABEL readme='https://raw.githubusercontent.com/your-repo/main/README.md'
 LABEL links='{\
-        "website": "https://github.com/Williangalvani/BlueOS-examples/",\
-        "support": "https://github.com/Williangalvani/BlueOS-examples/"\
-    }'
+    "website": "https://github.com/your-repo",\
+    "support": "https://github.com/your-repo/issues"\
+}'
 LABEL requirements="core >= 1.1"
 
 ENTRYPOINT ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "80", "--app-dir", "/app"]
