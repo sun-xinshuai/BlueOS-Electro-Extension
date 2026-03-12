@@ -8,9 +8,6 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY install.sh /install.sh
-
-RUN chmod +x /install.sh && /install.sh
 
 COPY app /app
 RUN python /app/setup.py install
