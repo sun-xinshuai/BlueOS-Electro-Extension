@@ -2,7 +2,7 @@ FROM python:3.9-slim-bullseye
 
 # Create default user folder (same as DVL project)
 RUN mkdir -p /home/pi
-
+RUN usermod -aG dialout root
 # Install serial reader service
 COPY serial-reader /home/pi/serial-reader
 RUN cd /home/pi/serial-reader && pip3 install . && chmod +x main.py
