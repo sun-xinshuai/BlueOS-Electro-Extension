@@ -5,7 +5,6 @@
 
 import threading
 import time
-from pathlib import Path
 from collections import deque
 from datetime import datetime
 from typing import Optional
@@ -17,18 +16,11 @@ from loguru import logger
 MAX_HISTORY = 500
 DEFAULT_PORT = "/dev/ttyAMA0"
 DEFAULT_BAUD = 115200
-PORT_CANDIDATES = [
-    "/dev/serial0",
-    "/dev/ttyAMA0",
-    "/dev/ttyS0",
-    "/dev/ttyUSB0",
-    "/dev/ttyACM0",
-]
 
 
 class SerialDriver:
     def __init__(self):
-        self.port: str = self._detect_initial_port()
+        self.port: str = DEFAULT_PORT
         self.baud: int = DEFAULT_BAUD
         self.connected: bool = False
         self.error: Optional[str] = None
@@ -42,8 +34,6 @@ class SerialDriver:
         self.total_bytes: int = 0
         self.total_lines: int = 0
         self.start_time: float = time.time()
-        self._byte_buffer: bytearray = bytearray()
-        self._last_rx_time: float = time.time()
 
     # ── 公开接口 ──────────────────────────────────────────────────────────────
 
@@ -97,28 +87,6 @@ class SerialDriver:
             for p in serial.tools.list_ports.comports()
         ]
 
-    def _detect_initial_port(self) -> str:
-        for port in PORT_CANDIDATES:
-            if Path(port).exists():
-                return port
-
-        ports = self.list_ports()
-        if ports:
-            return ports[0]["device"]
-
-        return DEFAULT_PORT
-
-    def _auto_switch_port_if_needed(self) -> bool:
-        if Path(self.port).exists():
-            return False
-
-        candidate = self._detect_initial_port()
-        if candidate != self.port:
-            logger.warning(f"Port {self.port} not found, auto-switched to {candidate}")
-            self.port = candidate
-            return True
-        return False
-
     # ── 内部实现 ──────────────────────────────────────────────────────────────
 
     def _close(self):
@@ -129,26 +97,6 @@ class SerialDriver:
             except Exception:
                 pass
         self.connected = False
-        self._byte_buffer.clear()
-
-    def _append_history(self, payload: bytes):
-        payload = payload.strip()
-        if not payload:
-            return
-
-        try:
-            text = payload.decode("utf-8", errors="replace")
-        except Exception:
-            text = repr(payload)
-
-        self.total_lines += 1
-        entry = {
-            "index":     self.total_lines,
-            "timestamp": datetime.now().strftime("%H:%M:%S.%f")[:12],
-            "raw":       text,
-            "hex":       payload.hex(" "),
-        }
-        self.history.append(entry)
 
     def _reader_loop(self):
         """后台线程：持续尝试打开串口并读取数据"""
@@ -157,21 +105,13 @@ class SerialDriver:
                 time.sleep(1)
                 continue
 
-            self._auto_switch_port_if_needed()
-
             # 尝试打开串口
             try:
                 with self._lock:
                     self._serial = serial.Serial(
                         port=self.port,
                         baudrate=self.baud,
-                        timeout=0.2,
-                        bytesize=serial.EIGHTBITS,
-                        parity=serial.PARITY_NONE,
-                        stopbits=serial.STOPBITS_ONE,
-                        xonxoff=False,
-                        rtscts=False,
-                        dsrdtr=False,
+                        timeout=1.0,
                     )
                 self.connected = True
                 self.error = None
@@ -186,34 +126,25 @@ class SerialDriver:
             # 读取循环
             try:
                 while self.enabled:
-                    waiting = self._serial.in_waiting if self._serial else 0
-                    raw_bytes = self._serial.read(waiting or 1)
+                    raw_bytes = self._serial.readline()
                     if not raw_bytes:
-                        # STM32 常见是无换行持续流；空闲一小段时间就把缓冲内容刷出来。
-                        if self._byte_buffer and (time.time() - self._last_rx_time) > 0.3:
-                            self._append_history(bytes(self._byte_buffer))
-                            self._byte_buffer.clear()
                         continue
 
                     self.total_bytes += len(raw_bytes)
-                    self._last_rx_time = time.time()
 
-                    normalized = raw_bytes.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
-                    self._byte_buffer.extend(normalized)
+                    try:
+                        text = raw_bytes.decode("utf-8", errors="replace").strip()
+                    except Exception:
+                        text = repr(raw_bytes)
 
-                    while True:
-                        try:
-                            newline_index = self._byte_buffer.index(0x0A)
-                        except ValueError:
-                            break
-
-                        line = bytes(self._byte_buffer[:newline_index])
-                        del self._byte_buffer[:newline_index + 1]
-                        self._append_history(line)
-
-                    if len(self._byte_buffer) >= 256:
-                        self._append_history(bytes(self._byte_buffer))
-                        self._byte_buffer.clear()
+                    if text:
+                        self.total_lines += 1
+                        entry = {
+                            "index":     self.total_lines,
+                            "timestamp": datetime.now().strftime("%H:%M:%S.%f")[:12],
+                            "raw":       text,
+                        }
+                        self.history.append(entry)
 
             except Exception as e:
                 self.connected = False

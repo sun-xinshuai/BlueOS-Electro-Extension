@@ -32,7 +32,7 @@
         width: 10px; height: 10px; border-radius: 50%;
         display: inline-block; margin-right: 6px; vertical-align: middle;
     }
-    .dot-green  { background: #7cbe7f; }
+    .dot-green  { background: #4caf50; }
     .dot-red    { background: #f44336; }
     .dot-yellow { background: #ff9800; }
 </style>
@@ -130,9 +130,6 @@
                                 <v-col cols="auto" class="ml-3">
                                     <v-switch v-model="showTs" label="时间戳" dense hide-details class="mt-0"></v-switch>
                                 </v-col>
-                                <v-col cols="auto" class="ml-3">
-                                    <v-switch v-model="showHex" label="HEX" dense hide-details class="mt-0"></v-switch>
-                                </v-col>
                             </v-row>
 
                             <!-- 终端输出 -->
@@ -148,7 +145,7 @@
                                     :class="{ 'is-error': /error|fail/i.test(line.raw) }">
                                     <span class="log-idx">{{ line.index }}</span>
                                     <span v-if="showTs" class="log-ts">{{ line.timestamp }}</span>
-                                    <span class="log-text">{{ displayPayload(line) }}</span>
+                                    <span class="log-text">{{ line.raw }}</span>
                                 </div>
                             </div>
                         </v-card>
@@ -189,7 +186,7 @@ new Vue({
 
             // 配置
             enabled: true,
-            selectedPort: '',
+            selectedPort: '/dev/ttyAMA0',
             selectedBaud: 115200,
             portItems: [],
             baudRates: [9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600],
@@ -198,7 +195,6 @@ new Vue({
             filterText: '',
             autoScroll: true,
             showTs: true,
-            showHex: false,
 
             // 通知
             snack: { show: false, text: '', color: 'success' },
@@ -209,11 +205,7 @@ new Vue({
         filteredLines() {
             if (!this.filterText) return this.lines
             const kw = this.filterText.toLowerCase()
-            return this.lines.filter(l => {
-                const raw = (l.raw || '').toLowerCase()
-                const hex = (l.hex || '').toLowerCase()
-                return raw.includes(kw) || hex.includes(kw)
-            })
+            return this.lines.filter(l => l.raw.toLowerCase().includes(kw))
         },
     },
 
@@ -291,7 +283,7 @@ new Vue({
 
         exportLog() {
             const text = this.lines
-                .map(l => `[${l.timestamp}] RAW: ${l.raw} | HEX: ${l.hex || this.toHexFromText(l.raw || '')}`)
+                .map(l => `[${l.timestamp}] ${l.raw}`)
                 .join('\n')
             const blob = new Blob([text], { type: 'text/plain' })
             const a = document.createElement('a')
@@ -299,16 +291,6 @@ new Vue({
             a.download = `serial_${new Date().toISOString().slice(0,19)}.txt`
             a.click()
             this.toast('已导出')
-        },
-
-        displayPayload(line) {
-            if (!this.showHex) return line.raw
-            return line.hex || this.toHexFromText(line.raw || '')
-        },
-
-        toHexFromText(text) {
-            const bytes = new TextEncoder().encode(text)
-            return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join(' ')
         },
 
         // ── 工具 ──────────────────────────────────────────────
