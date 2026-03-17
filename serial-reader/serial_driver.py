@@ -5,6 +5,7 @@
 
 import threading
 import time
+from pathlib import Path
 from collections import deque
 from datetime import datetime
 from typing import Optional
@@ -16,11 +17,18 @@ from loguru import logger
 MAX_HISTORY = 500
 DEFAULT_PORT = "/dev/ttyAMA0"
 DEFAULT_BAUD = 115200
+PORT_CANDIDATES = [
+    "/dev/serial0",
+    "/dev/ttyAMA0",
+    "/dev/ttyS0",
+    "/dev/ttyUSB0",
+    "/dev/ttyACM0",
+]
 
 
 class SerialDriver:
     def __init__(self):
-        self.port: str = DEFAULT_PORT
+        self.port: str = self._detect_initial_port()
         self.baud: int = DEFAULT_BAUD
         self.connected: bool = False
         self.error: Optional[str] = None
@@ -89,6 +97,28 @@ class SerialDriver:
             for p in serial.tools.list_ports.comports()
         ]
 
+    def _detect_initial_port(self) -> str:
+        for port in PORT_CANDIDATES:
+            if Path(port).exists():
+                return port
+
+        ports = self.list_ports()
+        if ports:
+            return ports[0]["device"]
+
+        return DEFAULT_PORT
+
+    def _auto_switch_port_if_needed(self) -> bool:
+        if Path(self.port).exists():
+            return False
+
+        candidate = self._detect_initial_port()
+        if candidate != self.port:
+            logger.warning(f"Port {self.port} not found, auto-switched to {candidate}")
+            self.port = candidate
+            return True
+        return False
+
     # ── 内部实现 ──────────────────────────────────────────────────────────────
 
     def _close(self):
@@ -126,6 +156,8 @@ class SerialDriver:
             if not self.enabled:
                 time.sleep(1)
                 continue
+
+            self._auto_switch_port_if_needed()
 
             # 尝试打开串口
             try:
