@@ -17,6 +17,12 @@ class API:
     def get_status(self):
         return self.driver.get_status()
 
+    def get_history_since(self, since: int, limit: int = 2000) -> list:
+        return self.driver.get_history_since(since, limit)
+
+    def export_history(self) -> list:
+        return self.driver.get_all_history()
+
     def set_enabled(self, enabled: str) -> bool:
         if enabled in ["true", "false"]:
             return self.driver.set_enabled(enabled == "true")
@@ -58,6 +64,16 @@ if __name__ == "__main__":
     def get_status():
         import json
         return json.dumps(api.get_status())
+
+    @app.route("/get_history_since/<int:since>")
+    def get_history_since(since: int):
+        import json
+        return json.dumps(api.get_history_since(since))
+
+    @app.route("/export_history")
+    def export_history():
+        import json
+        return json.dumps(api.export_history())
 
     @app.route("/enable/<enable>")
     def set_enabled(enable: str):

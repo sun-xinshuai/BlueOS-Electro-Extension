@@ -183,6 +183,7 @@ new Vue({
                 total_bytes: 0, uptime: 0,
             },
             lines: [],
+            lastIndex: 0,
 
             // 配置
             enabled: true,
@@ -229,13 +230,13 @@ new Vue({
                     this.status = d
                     this.enabled = d.enabled
 
-                    // 同步新增的行（增量更新）
-                    const newLines = d.history.slice(this.lines.length)
-                    this.lines.push(...newLines)
-                    // 超出上限则裁剪
-                    if (this.lines.length > 50000) {
-                        this.lines = this.lines.slice(-50000)
+                    // 远端清空历史或重启后，索引可能回退
+                    if (d.total_lines < this.lastIndex) {
+                        this.lines = []
+                        this.lastIndex = 0
                     }
+
+                    this.fetchNewLines()
 
                     // 同步配置选择框
                     if (this.selectedPort === '' && d.port) this.selectedPort = d.port
@@ -244,6 +245,23 @@ new Vue({
                     this.status.connected = false
                     this.status.error = `无法连接服务: ${err}`
                 })
+        },
+
+        fetchNewLines() {
+            axios.get(`/get_history_since/${this.lastIndex}`, { timeout: 3000 })
+                .then(res => {
+                    const newLines = res.data || []
+                    if (newLines.length === 0) return
+
+                    this.lines.push(...newLines)
+
+                    if (this.lines.length > 50000) {
+                        this.lines = this.lines.slice(-50000)
+                    }
+
+                    this.lastIndex = this.lines[this.lines.length - 1].index
+                })
+                .catch(() => {})
         },
 
         // ── 拉取端口列表 ───────────────────────────────────────
@@ -277,20 +295,26 @@ new Vue({
             axios.get('/clear_history')
                 .then(() => {
                     this.lines = []
+                    this.lastIndex = 0
                     this.toast('已清空')
                 })
         },
 
         exportLog() {
-            const text = this.lines
-                .map(l => `[${l.timestamp}] ${l.raw}`)
-                .join('\n')
-            const blob = new Blob([text], { type: 'text/plain' })
-            const a = document.createElement('a')
-            a.href = URL.createObjectURL(blob)
-            a.download = `serial_${new Date().toISOString().slice(0,19)}.txt`
-            a.click()
-            this.toast('已导出')
+            axios.get('/export_history', { timeout: 10000 })
+                .then(res => {
+                    const rows = res.data || []
+                    const text = rows
+                        .map(l => `[${l.timestamp}] ${l.raw}`)
+                        .join('\n')
+                    const blob = new Blob([text], { type: 'text/plain' })
+                    const a = document.createElement('a')
+                    a.href = URL.createObjectURL(blob)
+                    a.download = `serial_${new Date().toISOString().slice(0,19)}.txt`
+                    a.click()
+                    this.toast(`已导出 ${rows.length} 行`)
+                })
+                .catch(() => this.toast('导出失败', 'error'))
         },
 
         // ── 工具 ──────────────────────────────────────────────

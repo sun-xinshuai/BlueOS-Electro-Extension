@@ -30,6 +30,7 @@ class SerialDriver:
         self._serial: Optional[serial.Serial] = None
         self._thread: Optional[threading.Thread] = None
         self._lock = threading.Lock()
+        self._history_lock = threading.Lock()
 
         self.history: deque = deque(maxlen=MAX_HISTORY)
         self.total_bytes: int = 0
@@ -45,6 +46,9 @@ class SerialDriver:
         logger.info("Serial reader thread started")
 
     def get_status(self) -> dict:
+        with self._history_lock:
+            history_size = len(self.history)
+
         return {
             "connected":   self.connected,
             "enabled":     self.enabled,
@@ -54,8 +58,25 @@ class SerialDriver:
             "total_lines": self.total_lines,
             "total_bytes": self.total_bytes,
             "uptime":      round(time.time() - self.start_time, 1),
-            "history":     list(self.history),
+            "history_size": history_size,
         }
+
+    def get_history_since(self, since_index: int, limit: int = 2000) -> list:
+        # Snapshot under lock to avoid concurrent mutation while copying.
+        with self._history_lock:
+            snapshot = list(self.history)
+
+        if since_index <= 0:
+            return snapshot[-limit:] if len(snapshot) > limit else snapshot
+
+        result = [entry for entry in snapshot if entry["index"] > since_index]
+        if len(result) > limit:
+            return result[:limit]
+        return result
+
+    def get_all_history(self) -> list:
+        with self._history_lock:
+            return list(self.history)
 
     def set_port(self, port: str) -> bool:
         with self._lock:
@@ -79,7 +100,8 @@ class SerialDriver:
         return True
 
     def clear_history(self):
-        self.history.clear()
+        with self._history_lock:
+            self.history.clear()
         logger.info("History cleared")
 
     def list_ports(self) -> list:
@@ -145,7 +167,8 @@ class SerialDriver:
                             "timestamp": datetime.now().strftime("%H:%M:%S.%f")[:12],
                             "raw":       text,
                         }
-                        self.history.append(entry)
+                        with self._history_lock:
+                            self.history.append(entry)
 
             except Exception as e:
                 self.connected = False
