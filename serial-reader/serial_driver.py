@@ -78,6 +78,14 @@ class SerialDriver:
         with self._history_lock:
             return list(self.history)
 
+    def export_history(self, limit: int = 30000) -> list:
+        limit = max(1, min(int(limit), 30000))
+        with self._history_lock:
+            snapshot = list(self.history)
+        if len(snapshot) > limit:
+            return snapshot[-limit:]
+        return snapshot
+
     def set_port(self, port: str) -> bool:
         with self._lock:
             self.port = port

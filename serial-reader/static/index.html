@@ -105,6 +105,16 @@
                                 <v-icon left>mdi-delete</v-icon>清空记录
                             </v-btn>
 
+                            <v-text-field
+                                v-model.number="exportLimit"
+                                type="number"
+                                min="1"
+                                max="30000"
+                                label="导出条数（1-30000）"
+                                outlined dense
+                                class="mt-3 mb-2">
+                            </v-text-field>
+
                             <v-btn block text class="mt-2" @click="exportLog">
                                 <v-icon left>mdi-download</v-icon>导出日志
                             </v-btn>
@@ -184,6 +194,7 @@ new Vue({
             },
             lines: [],
             lastIndex: 0,
+            exportLimit: 8000,
 
             // 配置
             enabled: true,
@@ -303,7 +314,16 @@ new Vue({
         },
 
         exportLog() {
-            axios.get('/export_history', { timeout: 10000 })
+            let limit = parseInt(this.exportLimit, 10)
+            if (Number.isNaN(limit)) {
+                this.toast('请输入有效的导出条数', 'error')
+                return
+            }
+            limit = Math.max(1, Math.min(limit, 30000))
+            this.exportLimit = limit
+            localStorage.setItem('serial_export_limit', String(limit))
+
+            axios.get(`/export_history?limit=${limit}`, { timeout: 10000 })
                 .then(res => {
                     const rows = res.data || []
                     const text = rows
@@ -340,6 +360,10 @@ new Vue({
 
     mounted() {
         console.log('Serial Monitor mounted!')
+        const savedLimit = parseInt(localStorage.getItem('serial_export_limit') || '8000', 10)
+        if (!Number.isNaN(savedLimit)) {
+            this.exportLimit = Math.max(1, Math.min(savedLimit, 30000))
+        }
         this.loadPorts()
         this.updateStatus()
         setInterval(this.updateStatus, 1000)   // 每秒轮询

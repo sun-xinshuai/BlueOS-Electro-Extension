@@ -20,8 +20,8 @@ class API:
     def get_history_since(self, since: int, limit: int = 2000) -> list:
         return self.driver.get_history_since(since, limit)
 
-    def export_history(self) -> list:
-        return self.driver.get_all_history()
+    def export_history(self, limit: int = 30000) -> list:
+        return self.driver.export_history(limit)
 
     def set_enabled(self, enabled: str) -> bool:
         if enabled in ["true", "false"]:
@@ -73,7 +73,14 @@ if __name__ == "__main__":
     @app.route("/export_history")
     def export_history():
         import json
-        return json.dumps(api.export_history())
+        from flask import request
+
+        try:
+            limit = int(request.args.get("limit", 30000))
+        except (TypeError, ValueError):
+            limit = 30000
+
+        return json.dumps(api.export_history(limit))
 
     @app.route("/enable/<enable>")
     def set_enabled(enable: str):
