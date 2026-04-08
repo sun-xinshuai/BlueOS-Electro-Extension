@@ -102,6 +102,8 @@ class SerialDriver:
     def clear_history(self):
         with self._history_lock:
             self.history.clear()
+        self.total_lines = 0
+        self.total_bytes = 0
         logger.info("History cleared")
 
     def list_ports(self) -> list:

@@ -296,6 +296,8 @@ new Vue({
                 .then(() => {
                     this.lines = []
                     this.lastIndex = 0
+                    this.status.total_lines = 0
+                    this.status.total_bytes = 0
                     this.toast('已清空')
                 })
         },
