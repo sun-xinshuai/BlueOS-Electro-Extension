@@ -1,327 +1,270 @@
 <html>
 <head>
-    <title>Serial Monitor + 航位推算</title>
-    <!-- 离线 ROV 无外网：不再外链 Google Fonts，统一回退到系统 sans-serif -->
+    <title>Active Electro Boundary Inversion</title>
     <link href="/static/css/materialdesignicons.min.css" rel="stylesheet">
     <link href="/static/css/vuetify.min.css" rel="stylesheet">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
 </head>
 <style>
-    html, body, #app { background: #f6f8fb; }
-    .v-application { background: #f6f8fb !important; color: #172033 !important; }
+    html, body, #app { background: #f5f7fb; }
+    .v-application { background: #f5f7fb !important; color: #172033 !important; }
     .v-card {
-        padding: 16px;
-        border-color: #dfe5ee !important;
         border-radius: 8px !important;
-        box-shadow: 0 1px 2px rgba(17, 24, 39, 0.04) !important;
-        background: #ffffff !important;
+        border: 1px solid #dbe2ea !important;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
     }
     h1 {
-        margin: 4px 0 16px;
-        text-align: left;
-        font-size: 24px;
+        margin: 4px 0 12px;
+        font-size: 22px;
         font-weight: 700;
-        color: #111827;
-        letter-spacing: 0;
+        color: #101828;
     }
-    .section-title { font-size:13px;font-weight:700;color:#172033;margin-bottom:10px; }
-    .muted { color:#667085 !important; }
-    .status-strip { display:flex; gap:18px; align-items:center; flex-wrap:wrap; }
-    .status-item { display:flex; align-items:center; color:#475467; font-size:12px; }
-    .diag-strip {
-        margin-top: 10px;
-        padding: 10px 12px;
-        border: 1px solid #e4e7ec;
-        border-radius: 6px;
-        background: #f9fafb;
+    .status-strip {
         display: flex;
-        gap: 12px;
+        gap: 10px 16px;
         flex-wrap: wrap;
+        align-items: center;
         font-size: 12px;
         color: #475467;
     }
-    .diag-pill {
-        display:inline-flex;
-        align-items:center;
-        gap:5px;
-        padding:3px 8px;
-        border-radius:999px;
-        background:#eef2f7;
-        color:#344054;
+    .status-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
     }
-
+    .dot { width: 10px; height: 10px; border-radius: 999px; display:inline-block; }
+    .dot-green { background: #16a34a; }
+    .dot-red { background: #ef4444; }
+    .dot-yellow { background: #f59e0b; }
+    .subtle { color: #667085; font-size: 12px; }
+    .section-title {
+        font-size: 13px;
+        font-weight: 700;
+        color: #101828;
+        margin-bottom: 10px;
+    }
+    .metric {
+        text-align: center;
+        padding: 8px 6px;
+    }
+    .metric-num {
+        font-family: monospace;
+        font-size: 16px;
+        font-weight: 700;
+        color: #0f766e;
+        line-height: 1.2;
+    }
+    .metric-lbl {
+        font-size: 10px;
+        color: #667085;
+        margin-top: 2px;
+    }
     .terminal {
-        background: #101828; color: #e4e7ec;
-        font-family: 'Courier New', monospace; font-size: 12px;
-        height: 440px; overflow-y: auto; padding: 10px 14px; border-radius: 6px;
+        background: #0b1220;
+        color: #e5e7eb;
+        font-family: Consolas, "Courier New", monospace;
+        font-size: 12px;
+        height: 520px;
+        overflow-y: auto;
+        padding: 10px 12px;
+        border-radius: 6px;
     }
-    .log-line { line-height: 1.8; white-space: pre-wrap; word-break: break-all; }
-    .log-idx  { color: #98a2b3; margin-right: 8px; user-select: none; display: inline-block; min-width: 36px; text-align: right; }
-    .log-ts   { color: #569cd6; margin-right: 8px; user-select: none; }
-    .log-text { color: #e4e7ec; }
-    .log-line.is-error .log-text { color: #f48771; }
-
-    .dot { width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:6px;vertical-align:middle; }
-    .dot-green  { background:#4caf50; }
-    .dot-red    { background:#f44336; }
-    .dot-yellow { background:#ff9800; }
-
-    /* 数值显示格 */
-    .val-box { text-align:center; padding: 6px 4px; }
-    .val-num { font-size:15px; font-weight:bold; font-family:monospace; color:#0f766e; }
-    .val-lbl { font-size:10px; color:#667085; margin-top:2px; }
-
-    /* DR 位置大字 */
-    .dr-big { font-size:22px; font-weight:bold; font-family:monospace; color:#0369a1; }
-    .dr-lbl { font-size:11px; color:#667085; }
-
-    /* 轨迹画布 */
-    #trackCanvas {
-        width:100%;
-        border-radius:6px;
-        border:1px solid #e4e7ec;
-        background:#ffffff;
-        display:block;
-        cursor:crosshair;
+    .log-line {
+        line-height: 1.55;
+        white-space: pre-wrap;
+        word-break: break-word;
     }
-
-    /* EKF bar */
-    .ekf-bg   { background:#edf2f7; border-radius:3px; height:7px; margin-top:2px; }
-    .ekf-fill { height:7px; border-radius:3px; transition:width .3s; }
-
-    /* 漂移警告 */
-    .drift-banner {
-        background: #fff7ed;
-        border: 1px solid #fed7aa;
-        border-radius:6px; padding:8px 14px; margin-bottom:8px;
-        font-size:13px; color:#9a3412; display:flex; align-items:center; gap:8px;
+    .log-line.is-error .log-text { color: #fda4af; }
+    .log-idx {
+        color: #94a3b8;
+        display: inline-block;
+        width: 54px;
+        text-align: right;
+        margin-right: 8px;
+        user-select: none;
     }
-
-    /* 3D 迷你视图标签 */
-    .view-tabs .v-tab { min-width:80px; font-size:12px; }
-    .map-log-row { align-items: stretch; }
-    .map-log-row > .col,
-    .map-log-row > [class*="col-"],
-    .map-log-row .v-card {
-        display: flex;
-        flex-direction: column;
+    .log-ts {
+        color: #38bdf8;
+        margin-right: 8px;
+        user-select: none;
     }
-    .map-log-row .v-card {
-        height: 100%;
+    .bar-row {
+        display: grid;
+        grid-template-columns: 44px 1fr 72px 72px;
+        gap: 8px;
+        align-items: center;
+        margin-bottom: 8px;
+        font-size: 12px;
     }
-    .map-help {
+    .bar-name { font-weight: 700; color: #344054; }
+    .bar-value, .bar-delta { font-family: monospace; color: #475467; text-align: right; }
+    .small-note {
         font-size: 11px;
         color: #667085;
-        margin-top: 6px;
+        line-height: 1.5;
     }
     @media (max-width: 959px) {
-        .terminal { height: 340px; }
+        .terminal { height: 360px; }
     }
 </style>
-
 <div id="app">
 <v-app>
 <v-main>
 <v-container fluid>
 
-    <h1>Serial Monitor &amp; 航位推算（纯 IMU）</h1>
+    <h1>Active Electro Boundary Inversion</h1>
 
-    <!-- ── 顶部状态条 ─────────────────────────────────────── -->
-    <v-row>
-      <v-col>
-        <v-card outlined class="pa-3">
-          <div class="status-strip">
+    <v-card outlined class="pa-3 mb-3">
+        <div class="status-strip">
             <div class="status-item">
-              <span class="dot" :class="status.connected?'dot-green':'dot-red'"></span>
-              <span>串口 {{ status.connected?'已连接':(status.error||'未连接') }}</span>
+                <span class="dot" :class="status.connected ? 'dot-green' : 'dot-red'"></span>
+                <span>Serial {{ status.connected ? 'connected' : (status.error || 'disconnected') }}</span>
             </div>
             <div class="status-item">
-              <span class="dot" :class="mavOk?'dot-green':'dot-yellow'"></span>
-              <span>MAVLink2REST</span>
+                <span class="dot" :class="status.enabled ? 'dot-green' : 'dot-yellow'"></span>
+                <span>{{ status.enabled ? 'reader enabled' : 'reader disabled' }}</span>
             </div>
-            <div class="status-item">IMU {{ telem.imu_ok ? (telem.imu_message || 'OK') : '无数据' }}</div>
-            <div class="status-item">姿态 {{ telem.attitude_ok ? 'OK' : '无数据' }}</div>
-            <div class="status-item">加速度标定 {{ telem.accel_scale_calibrated ? '已校准' : '进行中' }}</div>
-            <div class="status-item">重力基线 {{ telem.gravity_calibrated ? '已校准' : ((telem.gravity_cal_samples || 0) + '/30') }}</div>
-            <div class="status-item">积分时长 {{ fmtTime(telem.dr_time) }}</div>
-            <div class="status-item">轨迹点 {{ trackPts.length }}</div>
-            <div class="status-item">运行 {{ fmtUptime(status.uptime) }}</div>
-          </div>
-          <div class="diag-strip">
-            <span class="diag-pill">IMU: {{ mavMsgState(telem.imu_message || 'SCALED_IMU2') }}</span>
-            <span class="diag-pill">SCALED_IMU2: {{ mavMsgState('SCALED_IMU2') }}</span>
-            <span class="diag-pill">SCALED_IMU: {{ mavMsgState('SCALED_IMU') }}</span>
-            <span class="diag-pill">RAW_IMU: {{ mavMsgState('RAW_IMU') }}</span>
-            <span class="diag-pill">ATTITUDE: {{ mavMsgState('ATTITUDE') }}</span>
-            <span class="muted">源 {{ telem.mavlink_base || '未连接' }}</span>
-          </div>
-        </v-card>
-      </v-col>
-    </v-row>
-
-    <!-- ── 漂移警告横幅 ────────────────────────────────────── -->
-    <v-row v-if="telem.drift_warn" class="mt-1">
-      <v-col>
-        <div class="drift-banner">
-          <v-icon color="orange darken-3" small>mdi-alert</v-icon>
-          <strong>漂移警告：</strong>
-          航位推算已积分超过 {{ fmtTime(telem.dr_time) }}，纯 IMU 位置误差随时间累积，仅供参考。
-          建议定期按"重置归零"重新计算。
+            <div class="status-item">
+                <span class="dot" :class="telem.baseline_ready ? 'dot-green' : 'dot-yellow'"></span>
+                <span>{{ telem.baseline_ready ? 'baseline ready' : 'null baseline missing' }}</span>
+            </div>
+            <div class="status-item">history {{ status.history_size || 0 }}</div>
+            <div class="status-item">rx {{ fmtAge(status.last_rx_age) }}</div>
+            <div class="status-item">uptime {{ fmtUptime(status.uptime) }}</div>
+            <div class="status-item">sample {{ telem.sample_rate_hz || 100 }} Hz</div>
+            <div class="status-item">target {{ telem.target_hz || 20 }} Hz</div>
+            <div class="status-item">cond {{ telem.conductivity_uS_cm || 800 }} uS/cm</div>
         </div>
-      </v-col>
+        <div class="mt-2 small-note">
+            Fixed cache is held on the device; export will include everything currently in the ring buffer.
+        </div>
+    </v-card>
+
+    <v-row class="mt-1">
+        <v-col cols="12" md="7">
+            <v-card outlined class="pa-3">
+                <div class="d-flex align-center justify-space-between flex-wrap mb-2">
+                    <div>
+                        <div class="section-title mb-1">Boundary inversion</div>
+                        <div class="subtle">Null baseline first, then estimate distance from the right-side feature.</div>
+                    </div>
+                    <div class="d-flex align-center" style="gap:8px;flex-wrap:wrap">
+                        <v-text-field v-model.number="nullSeconds" type="number" min="1" step="1" dense outlined hide-details style="max-width:110px"></v-text-field>
+                        <v-btn small color="primary" @click="captureNull"><v-icon left small>mdi-database-plus</v-icon>null采集</v-btn>
+                        <v-btn small color="warning" @click="loadBaseline"><v-icon left small>mdi-restore</v-icon>重载基线</v-btn>
+                        <v-btn small color="error" outlined @click="clearBaseline"><v-icon left small>mdi-delete-forever</v-icon>清空基线</v-btn>
+                    </div>
+                </div>
+
+                <v-row no-gutters>
+                    <v-col cols="6" sm="3" class="metric">
+                        <div class="metric-num">{{ f2(telem.peak_freq_hz) }}</div>
+                        <div class="metric-lbl">peak Hz</div>
+                    </v-col>
+                    <v-col cols="6" sm="3" class="metric">
+                        <div class="metric-num">{{ f2(telem.target_amp_mv) }}</div>
+                        <div class="metric-lbl">target amp mV</div>
+                    </v-col>
+                    <v-col cols="6" sm="3" class="metric">
+                        <div class="metric-num">{{ f3(telem.raw_feature_mv) }}</div>
+                        <div class="metric-lbl">raw feature</div>
+                    </v-col>
+                    <v-col cols="6" sm="3" class="metric">
+                        <div class="metric-num">{{ f3(telem.delta_feature_mv) }}</div>
+                        <div class="metric-lbl">delta feature</div>
+                    </v-col>
+                </v-row>
+
+                <v-divider class="my-2"></v-divider>
+
+                <v-row no-gutters>
+                    <v-col cols="6" sm="4" class="metric">
+                        <div class="metric-num" style="font-size:22px;color:#0369a1">{{ f2(telem.estimated_distance_cm) }}</div>
+                        <div class="metric-lbl">estimated distance cm</div>
+                    </v-col>
+                    <v-col cols="6" sm="4" class="metric">
+                        <div class="metric-num" style="font-size:22px;color:#7c3aed">{{ f3(telem.baseline_feature_mv) }}</div>
+                        <div class="metric-lbl">baseline feature</div>
+                    </v-col>
+                    <v-col cols="12" sm="4" class="metric">
+                        <div class="metric-num" style="font-size:22px;color:#0f766e">{{ telem.null_progress != null ? Math.round((telem.null_progress || 0) * 100) : 0 }}%</div>
+                        <div class="metric-lbl">null progress</div>
+                    </v-col>
+                </v-row>
+
+                <div class="mt-2">
+                    <v-progress-linear :value="(telem.null_progress || 0) * 100" height="10" color="teal"></v-progress-linear>
+                </div>
+
+                <v-divider class="my-3"></v-divider>
+
+                <div class="section-title">Channel amplitudes</div>
+                <div v-for="(amp, i) in (telem.channel_amp_mv || [])" :key="i" class="bar-row">
+                    <div class="bar-name">CH{{ i }}</div>
+                    <v-progress-linear :value="channelPct(i)" height="8" rounded :color="i >= 4 ? 'indigo' : 'blue-grey lighten-1'"></v-progress-linear>
+                    <div class="bar-value">{{ f2(amp) }} mV</div>
+                    <div class="bar-delta">{{ f2(channelDelta(i)) }} delta</div>
+                </div>
+
+                <div class="small-note mt-2">
+                    Feature uses CH4/CH5 against the other six channels, then maps the baseline-corrected 20 Hz response to distance.
+                </div>
+            </v-card>
+        </v-col>
+
+        <v-col cols="12" md="5">
+            <v-card outlined class="pa-3">
+                <div class="d-flex align-center justify-space-between flex-wrap mb-2">
+                    <div>
+                        <div class="section-title mb-1">Serial log</div>
+                        <div class="subtle">Live append from the fixed-size ring buffer.</div>
+                    </div>
+                    <div class="d-flex align-center" style="gap:8px;flex-wrap:wrap">
+                        <v-switch v-model="enabled" inset dense hide-details class="mt-0" :label="enabled ? 'enabled' : 'disabled'" @change="setEnabled($event)"></v-switch>
+                        <v-btn small text @click="clearHistory"><v-icon left small>mdi-delete</v-icon>clear</v-btn>
+                        <v-btn small text @click="exportLog"><v-icon left small>mdi-download</v-icon>export</v-btn>
+                    </div>
+                </div>
+
+                <v-row dense>
+                    <v-col cols="12" sm="7">
+                        <v-select v-model="selectedPort" :items="portItems" item-text="label" item-value="device" label="port" outlined dense hide-details></v-select>
+                    </v-col>
+                    <v-col cols="12" sm="3">
+                        <v-select v-model="selectedBaud" :items="baudRates" label="baud" outlined dense hide-details></v-select>
+                    </v-col>
+                    <v-col cols="12" sm="2" class="d-flex align-center">
+                        <v-btn block small color="primary" @click="applyConfig"><v-icon small>mdi-check</v-icon></v-btn>
+                    </v-col>
+                </v-row>
+
+                <v-row dense class="mt-1">
+                    <v-col cols="6" sm="4">
+                        <v-text-field v-model="filterText" label="filter" dense outlined hide-details clearable></v-text-field>
+                    </v-col>
+                    <v-col cols="6" sm="4">
+                        <v-switch v-model="autoScroll" inset dense hide-details class="mt-1" label="auto scroll"></v-switch>
+                    </v-col>
+                    <v-col cols="12" sm="4">
+                        <v-switch v-model="showTs" inset dense hide-details class="mt-1" label="timestamp"></v-switch>
+                    </v-col>
+                </v-row>
+
+                <div class="terminal mt-2" ref="terminal">
+                    <div v-if="filteredLines.length === 0" style="color:#94a3b8;text-align:center;padding-top:180px">
+                        waiting for serial data
+                    </div>
+                    <div v-for="line in filteredLines" :key="line.index" class="log-line" :class="{ 'is-error': /error|fail|drop|overrun/i.test(line.raw) }">
+                        <span class="log-idx">{{ line.index }}</span>
+                        <span v-if="showTs" class="log-ts">{{ line.timestamp }}</span>
+                        <span class="log-text">{{ line.raw }}</span>
+                    </div>
+                </div>
+            </v-card>
+        </v-col>
     </v-row>
 
-    <!-- ── 第一行：姿态仪表 + DR 当前位置 ─────────────────── -->
-    <v-row class="mt-2">
-      <!-- 人工地平仪 + 罗盘 -->
-      <v-col cols="12" sm="4">
-        <v-card outlined class="pa-2">
-          <div style="display:flex;gap:12px;justify-content:center;align-items:flex-start;flex-wrap:wrap">
-            <div style="text-align:center">
-              <canvas id="horizonCanvas" width="110" height="110" style="border-radius:50%;border:2px solid #cbd5e1;"></canvas>
-              <div style="font-size:10px;color:#667085;margin-top:3px">人工地平仪</div>
-            </div>
-            <div style="text-align:center">
-              <canvas id="compassCanvas" width="110" height="110" style="border-radius:50%;border:2px solid #cbd5e1;"></canvas>
-              <div style="font-size:10px;color:#667085;margin-top:3px">罗盘</div>
-            </div>
-          </div>
-          <v-row no-gutters class="mt-2">
-            <v-col class="val-box"><div class="val-num">{{ fmtDeg(telem.roll) }}°</div><div class="val-lbl">Roll</div></v-col>
-            <v-col class="val-box"><div class="val-num">{{ fmtDeg(telem.pitch) }}°</div><div class="val-lbl">Pitch</div></v-col>
-            <v-col class="val-box"><div class="val-num">{{ fmtDeg(telem.yaw) }}°</div><div class="val-lbl">Yaw</div></v-col>
-            <v-col class="val-box"><div class="val-num">{{ f2(telem.altitude) }}</div><div class="val-lbl">深度 m</div></v-col>
-          </v-row>
-          <!-- 角速度 -->
-          <v-row no-gutters>
-            <v-col class="val-box"><div class="val-num" style="font-size:12px">{{ f3(telem.rollspeed) }}</div><div class="val-lbl">ω_roll r/s</div></v-col>
-            <v-col class="val-box"><div class="val-num" style="font-size:12px">{{ f3(telem.pitchspeed) }}</div><div class="val-lbl">ω_pitch r/s</div></v-col>
-            <v-col class="val-box"><div class="val-num" style="font-size:12px">{{ f3(telem.yawspeed) }}</div><div class="val-lbl">ω_yaw r/s</div></v-col>
-          </v-row>
-          <!-- EKF -->
-          <div class="mt-2">
-            <div style="font-size:10px;color:#667085">EKF 水平位置方差 {{ f4(telem.ekf_pos_horiz) }}</div>
-            <div class="ekf-bg"><div class="ekf-fill" :style="ekfStyle(telem.ekf_pos_horiz,'#4caf50','#f44336')"></div></div>
-            <div style="font-size:10px;color:#667085;margin-top:3px">EKF 垂直位置方差 {{ f4(telem.ekf_pos_vert) }}</div>
-            <div class="ekf-bg"><div class="ekf-fill" :style="ekfStyle(telem.ekf_pos_vert,'#4caf50','#f44336')"></div></div>
-          </div>
-        </v-card>
-      </v-col>
-
-      <!-- DR 位置 + 加速度 -->
-      <v-col cols="12" sm="4">
-        <v-card outlined>
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-            <span class="section-title" style="margin-bottom:0">航位推算位置（局部坐标）</span>
-            <v-btn small color="warning" @click="resetDR">
-              <v-icon left small>mdi-restart</v-icon>重置归零
-            </v-btn>
-          </div>
-          <v-row no-gutters>
-            <v-col class="val-box" cols="4"><div class="dr-big">{{ f2(telem.dr_x) }}</div><div class="dr-lbl">X（东）m</div></v-col>
-            <v-col class="val-box" cols="4"><div class="dr-big">{{ f2(telem.dr_y) }}</div><div class="dr-lbl">Y（北）m</div></v-col>
-            <v-col class="val-box" cols="4"><div class="dr-big">{{ f2(telem.dr_z) }}</div><div class="dr-lbl">Z（天）m</div></v-col>
-          </v-row>
-          <v-divider class="my-2"></v-divider>
-          <v-row no-gutters>
-            <v-col class="val-box"><div class="val-num">{{ f3(telem.dr_speed) }}</div><div class="val-lbl">速度 m/s</div></v-col>
-            <v-col class="val-box"><div class="val-num">{{ f2(telem.dr_dist) }}</div><div class="val-lbl">路程 m</div></v-col>
-            <v-col class="val-box"><div class="val-num">{{ fmtTime(telem.dr_time) }}</div><div class="val-lbl">积分时长</div></v-col>
-          </v-row>
-          <v-divider class="my-2"></v-divider>
-          <div style="font-size:11px;color:#667085;margin-bottom:4px">世界系加速度（去重力后）</div>
-          <v-row no-gutters>
-            <v-col class="val-box"><div class="val-num" style="color:#ef9a9a">{{ f3(telem.ax_w) }}</div><div class="val-lbl">aX m/s²</div></v-col>
-            <v-col class="val-box"><div class="val-num" style="color:#a5d6a7">{{ f3(telem.ay_w) }}</div><div class="val-lbl">aY m/s²</div></v-col>
-            <v-col class="val-box"><div class="val-num" style="color:#90caf9">{{ f3(telem.az_w) }}</div><div class="val-lbl">aZ m/s²</div></v-col>
-          </v-row>
-          <div style="font-size:11px;color:#667085;margin-top:6px;margin-bottom:4px">
-            IMU原始轴加速度 <span style="color:#98a2b3">映射 {{ telem.imu_body_axis_map || '--' }}</span>
-          </div>
-          <v-row no-gutters>
-            <v-col class="val-box" cols="3"><div class="val-num" style="font-size:12px;color:#ef9a9a">{{ f3(telem.ax_raw) }}</div><div class="val-lbl">aX_imu</div></v-col>
-            <v-col class="val-box" cols="3"><div class="val-num" style="font-size:12px;color:#a5d6a7">{{ f3(telem.ay_raw) }}</div><div class="val-lbl">aY_imu</div></v-col>
-            <v-col class="val-box" cols="3"><div class="val-num" style="font-size:12px;color:#90caf9">{{ f3(telem.az_raw) }}</div><div class="val-lbl">aZ_imu</div></v-col>
-            <v-col class="val-box" cols="3"><div class="val-num" style="font-size:12px;color:#0f766e">{{ f3(telem.acc_norm_raw) }}</div><div class="val-lbl">|a|</div></v-col>
-          </v-row>
-        </v-card>
-      </v-col>
-
-      <!-- 串口配置 -->
-      <v-col cols="12" sm="4">
-        <v-card outlined>
-          <div class="section-title">串口配置</div>
-          <v-switch v-model="enabled" inset dense :label="`串口：${enabled?'启用':'停用'}`" @change="setEnabled($event)"></v-switch>
-          <v-select v-model="selectedPort" :items="portItems" item-text="label" item-value="device" label="串口" outlined dense class="mb-2"></v-select>
-          <v-select v-model="selectedBaud" :items="baudRates" label="波特率" outlined dense class="mb-2"></v-select>
-          <v-btn block color="primary" small @click="applyConfig"><v-icon left small>mdi-check</v-icon>应用</v-btn>
-          <v-btn block color="error" small class="mt-2" @click="clearHistory"><v-icon left small>mdi-delete</v-icon>清空串口记录</v-btn>
-          <v-btn block text small class="mt-2" @click="exportLog"><v-icon left small>mdi-download</v-icon>导出串口日志</v-btn>
-          <v-btn block text small class="mt-1" @click="exportTrackCSV"><v-icon left small>mdi-map-marker-path</v-icon>导出轨迹 CSV</v-btn>
-        </v-card>
-      </v-col>
-    </v-row>
-
-    <!-- ── 第二行：轨迹地图 ─────────────────────────────────── -->
-    <v-row class="mt-2 map-log-row">
-      <v-col cols="12" md="7" lg="8">
-        <v-card outlined>
-          <!-- 工具栏 -->
-          <v-row align="center" no-gutters class="mb-2" wrap>
-            <v-tabs v-model="viewTab" dense class="view-tabs" style="max-width:280px">
-              <v-tab>XY 俯视</v-tab>
-              <v-tab>XZ 侧视</v-tab>
-              <v-tab>YZ 正视</v-tab>
-            </v-tabs>
-            <v-btn small class="ml-2" @click="fitView"><v-icon left small>mdi-fit-to-page</v-icon>适应</v-btn>
-            <v-btn small class="ml-2" @click="resetDR" color="warning"><v-icon left small>mdi-restart</v-icon>重置 DR</v-btn>
-            <v-switch v-model="showArrows" dense hide-details label="航向箭头" class="mt-0 ml-3"></v-switch>
-            <v-switch v-model="showGrid"   dense hide-details label="网格"    class="mt-0 ml-3"></v-switch>
-            <span style="font-family:monospace;font-size:11px;color:#0f766e;margin-left:auto">
-              当前 X={{ f2(telem.dr_x) }}  Y={{ f2(telem.dr_y) }}  Z={{ f2(telem.dr_z) }} m
-            </span>
-          </v-row>
-
-          <canvas id="trackCanvas" :height="mapH"
-            @wheel.prevent="onWheel"
-            @mousedown="onMD" @mousemove="onMM" @mouseup="onMU" @mouseleave="onMU"
-            @touchstart.prevent="onTS" @touchmove.prevent="onTM" @touchend="onTE">
-          </canvas>
-
-          <div style="font-size:11px;color:#667085;margin-top:6px">
-            坐标原点 = 重置时的位置 &nbsp;·&nbsp;
-            颜色渐变：紫→青 = 时间顺序 &nbsp;·&nbsp;
-            滚轮缩放 · 拖拽平移
-            <span v-if="viewTab===0">（XY 平面：X=东，Y=北）</span>
-            <span v-if="viewTab===1">（XZ 平面：X=东，Z=高度）</span>
-            <span v-if="viewTab===2">（YZ 平面：Y=北，Z=高度）</span>
-          </div>
-        </v-card>
-      </v-col>
-      <v-col cols="12" md="5" lg="4">
-        <v-card outlined>
-          <v-row align="center" no-gutters class="px-1 pb-2">
-            <v-col>
-              <v-text-field v-model="filterText" label="过滤关键词" dense outlined hide-details clearable prepend-inner-icon="mdi-magnify"></v-text-field>
-            </v-col>
-            <v-col cols="auto" class="ml-2"><v-switch v-model="autoScroll" label="自动滚动" dense hide-details class="mt-0"></v-switch></v-col>
-            <v-col cols="auto" class="ml-2"><v-switch v-model="showTs" label="时间戳" dense hide-details class="mt-0"></v-switch></v-col>
-          </v-row>
-          <div class="terminal" ref="terminal">
-            <div v-if="filteredLines.length===0" style="color:#98a2b3;text-align:center;padding-top:100px">
-              {{ enabled ? '等待串口数据…' : '串口读取已停用' }}
-            </div>
-            <div v-for="line in filteredLines" :key="line.index" class="log-line" :class="{'is-error':/error|fail/i.test(line.raw)}">
-              <span class="log-idx">{{ line.index }}</span>
-              <span v-if="showTs" class="log-ts">{{ line.timestamp }}</span>
-              <span class="log-text">{{ line.raw }}</span>
-            </div>
-          </div>
-        </v-card>
-      </v-col>
-    </v-row>
-
-    <v-snackbar v-model="snack.show" :color="snack.color" timeout="3000" top>{{ snack.text }}</v-snackbar>
+    <v-snackbar v-model="snack.show" :color="snack.color" timeout="2500" top>{{ snack.text }}</v-snackbar>
 </v-container>
 </v-main>
 </v-app>
@@ -331,422 +274,174 @@
 <script src="/static/js/vuetify.js"></script>
 <script src="/static/js/axios.min.js"></script>
 <script>
-// ── 颜色辅助 ─────────────────────────────────────────────────────────────────
-function trackColor(t) {
-    // t 0→1 : 紫(98,0,234) → 青(0,229,255)
-    return `rgb(${~~(98-98*t)},${~~(229*t)},${~~(234+21*t)})`
+function now() {
+    return new Date().toISOString().slice(0, 19).replace('T', '_')
 }
 
 new Vue({
     el: '#app',
     vuetify: new Vuetify({
-        theme:{
-            dark:false,
-            themes:{ light:{ primary:'#2563eb', secondary:'#0f766e', warning:'#d97706', error:'#dc2626' } }
+        theme: {
+            dark: false,
+            themes: { light: { primary: '#2563eb', warning: '#d97706', error: '#dc2626', secondary: '#0f766e' } }
         }
     }),
-
-    data() { return {
-        // 串口
-        status:{ connected:false,enabled:true,port:'',baud:115200,error:null,total_lines:0,total_bytes:0,uptime:0 },
-        lines:[], lastIndex:0, _linesBusy:false,
-        enabled:true, selectedPort:'/dev/ttyAMA0', selectedBaud:115200,
-        portItems:[], baudRates:[9600,19200,38400,57600,115200,230400,460800,921600],
-        filterText:'', autoScroll:true, showTs:true,
-
-        // 遥测
-        telem:{}, mavOk:false,
-
-        // 轨迹
-        trackPts:[], lastTrackTs:0,
-
-        // 地图
-        viewTab:0,            // 0=XY 1=XZ 2=YZ
-        mapH:440,
-        mapScale:50,          // px/m
-        mapOX:0, mapOY:0,     // 画布偏移（原点对应画布坐标）
-        mapInited:false,
-        mapDrag:false, mapDS:null, mapDO:null,
-        showArrows:true, showGrid:true,
-
-        snack:{ show:false,text:'',color:'success' },
-    }},
-
+        data() {
+            return {
+            status: { connected: false, enabled: true, port: '', baud: 115200, error: null, history_size: 0, uptime: 0, last_rx_age: null },
+            telem: {},
+            lines: [],
+            lastIndex: 0,
+            enabled: true,
+            selectedPort: '/dev/ttyAMA0',
+            selectedBaud: 115200,
+            portItems: [],
+            baudRates: [9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600],
+            filterText: '',
+            autoScroll: true,
+            showTs: true,
+            nullSeconds: 8,
+            lineCap: 1200,
+            _lineBusy: false,
+            snack: { show: false, text: '', color: 'success' },
+        }
+    },
     computed: {
         filteredLines() {
-            const base = !this.filterText
-                ? this.lines
-                : this.lines.filter(l => l.raw.toLowerCase().includes(this.filterText.toLowerCase()))
-            // 只渲染最后 500 行，避免把上千条 DOM 节点全部塞进终端拖慢页面
-            return base.length > 500 ? base.slice(-500) : base
-        },
+            const q = (this.filterText || '').trim().toLowerCase()
+            const src = this.lines.slice(-this.lineCap)
+            if (!q) return src
+            return src.filter(l => (l.raw || '').toLowerCase().includes(q))
+        }
     },
-
-    watch: {
-        filteredLines() {
-            if (this.autoScroll) this.$nextTick(() => {
-                const el = this.$refs.terminal; if (el) el.scrollTop = el.scrollHeight
-            })
-        },
-        // 姿态仪/罗盘很轻量：遥测一变即重画（浅层 watch，不再触发整条轨迹重绘）
-        telem()     { this.drawHorizon(); this.drawCompass() },
-        // 轨迹重绘较重：只置脏标记，由 rAF 循环按显示刷新率合并后重绘
-        trackPts()  { this._trackDirty = true },
-        viewTab()   { this.mapInited = false; this._trackDirty = true },
-        showArrows(){ this._trackDirty = true },
-        showGrid()  { this._trackDirty = true },
-    },
-
     methods: {
-        // ══ 串口 ══════════════════════════════════════════════════════════════
         pollStatus() {
-            axios.get('/get_status',{timeout:2000}).then(r=>{
-                const d=r.data; this.status=d; this.enabled=d.enabled
-                if(d.total_lines < this.lastIndex){ this.lines=[]; this.lastIndex=0 }
-                if(!this.selectedPort && d.port) this.selectedPort=d.port
-            }).catch(()=>{ this.status.connected=false })
+            axios.get('/get_status', { timeout: 1500 }).then(r => {
+                this.status = r.data || this.status
+                this.enabled = !!this.status.enabled
+                this.selectedPort = this.status.port || this.selectedPort
+                this.selectedBaud = this.status.baud || this.selectedBaud
+            }).catch(() => {})
+        },
+        pollElectro() {
+            axios.get('/get_electro_state', { timeout: 1500 }).then(r => {
+                this.telem = r.data || {}
+            }).catch(() => {})
         },
         fetchLines() {
-            if(this._linesBusy) return
-            this._linesBusy = true
-            axios.get(`/get_history_since/${this.lastIndex}`,{timeout:1000}).then(r=>{
-                const nl=r.data||[]; if(!nl.length) return
-                this.lines.push(...nl)
-                if(this.lines.length>8000) this.lines=this.lines.slice(-8000)
-                this.lastIndex=this.lines[this.lines.length-1].index
-            }).catch(()=>{}).finally(()=>{ this._linesBusy = false })
+            if (this._lineBusy) return
+            this._lineBusy = true
+            axios.get(`/get_history_since/${this.lastIndex}`, { timeout: 2000 }).then(r => {
+                const incoming = r.data || []
+                if (!incoming.length) return
+                this.lines.push(...incoming)
+                if (this.lines.length > this.lineCap) {
+                    this.lines = this.lines.slice(-this.lineCap)
+                }
+                this.lastIndex = incoming[incoming.length - 1].index
+                this.$nextTick(this.scrollTerminal)
+            }).catch(() => {}).finally(() => { this._lineBusy = false })
         },
         loadPorts() {
-            axios.get('/list_ports',{timeout:2000}).then(r=>{
-                this.portItems=r.data.map(p=>({device:p.device,label:`${p.device} (${p.description})`}))
-            }).catch(()=>{})
+            axios.get('/list_ports', { timeout: 2000 }).then(r => {
+                this.portItems = (r.data || []).map(p => ({
+                    device: p.device,
+                    label: `${p.device} (${p.description || 'port'})`
+                }))
+            }).catch(() => {})
         },
-        setEnabled(v){ axios.get(`/enable/${v}`).then(()=>this.toast(v?'已启用':'已停用')) },
-        applyConfig(){
+        setEnabled(v) {
+            axios.get(`/enable/${v}`).then(() => this.toast(v ? 'reader enabled' : 'reader disabled'))
+        },
+        applyConfig() {
             axios.get(`/set_port/${encodeURIComponent(this.selectedPort)}`)
-            axios.get(`/set_baud/${this.selectedBaud}`).then(()=>this.toast('已应用'))
+            axios.get(`/set_baud/${this.selectedBaud}`).then(() => this.toast('config applied'))
         },
-        clearHistory(){
-            axios.get('/clear_history').then(()=>{ this.lines=[]; this.lastIndex=0; this.toast('已清空') })
-        },
-        exportLog(){
-            axios.get(`/export_history?limit=30000`,{timeout:10000}).then(r=>{
-                const txt=(r.data||[]).map(l=>`[${l.timestamp}] ${l.raw}`).join('\n')
-                this._dl(txt,`serial_${now()}.txt`,'text/plain')
-                this.toast(`已导出 ${r.data.length} 行`)
+        clearHistory() {
+            axios.get('/clear_history').then(() => {
+                this.lines = []
+                this.lastIndex = 0
+                this.toast('history cleared')
             })
         },
-
-        // ══ 遥测 ══════════════════════════════════════════════════════════════
-        pollTelemetry() {
-            axios.get('/get_telemetry',{timeout:1500}).then(r=>{
-                this.telem=r.data||{}
-                this.mavOk=!!r.data.ts && (Date.now()/1000-r.data.ts)<5
-            }).catch(()=>{ this.mavOk=false })
+        exportLog() {
+            axios.get('/export_history?limit=30000', { timeout: 10000 }).then(r => {
+                const rows = r.data || []
+                const txt = rows.map(l => `[${l.timestamp}] ${l.raw}`).join('\n')
+                this._download(txt, `serial_${now()}.txt`, 'text/plain')
+                this.toast(`exported ${rows.length} lines`)
+            }).catch(() => this.toast('export failed', 'error'))
         },
-        pollTrack() {
-            axios.get(`/get_track_since/${this.lastTrackTs}`,{timeout:2000}).then(r=>{
-                const pts=r.data||[]; if(!pts.length) return
-                this.trackPts.push(...pts)
-                if(this.trackPts.length>8000) this.trackPts=this.trackPts.slice(-8000)
-                this.lastTrackTs=pts[pts.length-1].ts
-            }).catch(()=>{})
+        captureNull() {
+            axios.get(`/capture_null?seconds=${Math.max(1, Number(this.nullSeconds || 8))}`).then(() => {
+                this.toast('null capture started')
+            }).catch(() => this.toast('capture failed', 'error'))
         },
-        resetDR() {
-            axios.get('/reset_dr').then(()=>{
-                this.trackPts=[]; this.lastTrackTs=0
-                this.mapInited=false; this._trackDirty=true
-                this.toast('航位推算已重置归零','info')
-            })
+        clearBaseline() {
+            axios.get('/clear_baseline').then(() => this.toast('baseline cleared'))
         },
-        exportTrackCSV() {
-            if(!this.trackPts.length){ this.toast('暂无轨迹','warning'); return }
-            const h='timestamp,x_m,y_m,z_m,depth_m,speed_m_s,roll_rad,pitch_rad,yaw_rad\n'
-            const rows=this.trackPts.map(p=>
-                `${p.ts.toFixed(3)},${p.x},${p.y},${p.z},${p.depth||0},${p.speed||0},${p.roll||0},${p.pitch||0},${p.yaw||0}`
-            ).join('\n')
-            this._dl(h+rows,`track_${now()}.csv`,'text/csv')
-            this.toast(`已导出 ${this.trackPts.length} 个轨迹点`)
+        loadBaseline() {
+            axios.get('/load_baseline').then(r => {
+                this.toast(r.data ? 'baseline loaded' : 'baseline missing')
+            }).catch(() => this.toast('load failed', 'error'))
         },
-
-        // ══ 轨迹渲染 ══════════════════════════════════════════════════════════
-        // 根据 viewTab 选取投影坐标
-        _proj(p) {
-            if (this.viewTab === 0) return { h: p.x, v: p.y }   // XY
-            if (this.viewTab === 1) return { h: p.x, v: p.z }   // XZ
-            return                         { h: p.y, v: p.z }   // YZ
+        channelDelta(i) {
+            const arr = this.telem.channel_delta_mv || []
+            return arr[i] != null ? arr[i] : 0
         },
-        // 轨迹点中航向向量（XY 平面用 yaw，其余用 pitch/roll 近似方向）
-        _hdg(p) {
-            if (this.viewTab === 0) return p.yaw   || 0    // yaw 顺时针从北
-            if (this.viewTab === 1) return -(p.pitch || 0) // 向前-向上
-            return -(p.roll  || 0)                         // 向前-向右
+        channelPct(i) {
+            const arr = this.telem.channel_amp_mv || []
+            const vals = arr.filter(v => v != null).map(v => Number(v))
+            if (!vals.length) return 0
+            const max = Math.max(...vals) || 1
+            const v = Number(arr[i] || 0)
+            return Math.max(0, Math.min(100, v / max * 100))
         },
-
-        fitView() { this.mapInited=false; this._trackDirty=true },
-
-        renderTrack() {
-            const canvas=document.getElementById('trackCanvas'); if(!canvas) return
-            const W=canvas.clientWidth||600
-            // 只在尺寸变化时设 width/height：给 canvas.width 赋值会重置上下文并触发清空/重排
-            if(canvas.width!==W) canvas.width=W
-            if(canvas.height!==this.mapH) canvas.height=this.mapH
-            const H=this.mapH
-            const ctx=canvas.getContext('2d')
-            ctx.clearRect(0,0,W,H)
-
-            // 背景
-            ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,W,H)
-
-            const pts=this.trackPts
-
-            // 自动适应视图
-            if(!this.mapInited || pts.length===1){
-                if(pts.length>=2){
-                    const hs=pts.map(p=>this._proj(p).h), vs=pts.map(p=>this._proj(p).v)
-                    const mnH=Math.min(...hs),mxH=Math.max(...hs),mnV=Math.min(...vs),mxV=Math.max(...vs)
-                    const dH=mxH-mnH||1, dV=mxV-mnV||1
-                    const pad=0.2
-                    this.mapScale=Math.min(W/(dH*(1+pad*2)), H/(dV*(1+pad*2)))
-                    this.mapOX=W/2-((mnH+mxH)/2)*this.mapScale
-                    this.mapOY=H/2+((mnV+mxV)/2)*this.mapScale
-                } else {
-                    this.mapScale=50
-                    this.mapOX=W/2; this.mapOY=H/2
-                }
-                this.mapInited=true
-            }
-
-            const toC=(h,v)=>({ x: h*this.mapScale+this.mapOX, y: -v*this.mapScale+this.mapOY })
-
-            // 网格
-            if(this.showGrid){
-                // 计算合适的网格间距（目标约60px一格）
-                const raw=60/this.mapScale
-                const exp=Math.pow(10, Math.floor(Math.log10(raw)))
-                const gStep=[exp, exp*2, exp*5, exp*10].find(s=>s*this.mapScale>=40)||exp*10
-
-                // 计算视野内范围
-                const left=(0-this.mapOX)/this.mapScale, right=(W-this.mapOX)/this.mapScale
-                const top=(H-this.mapOY)/(-this.mapScale), bot=(-this.mapOY)/(-this.mapScale)
-                // 但 y 翻转，重算
-                const vTop=(0 -this.mapOY)/(-this.mapScale), vBot=(H-this.mapOY)/(-this.mapScale)
-
-                ctx.strokeStyle='#eef2f7'; ctx.lineWidth=1
-                const startH=Math.floor(left/gStep)*gStep
-                for(let h=startH; h<=right+gStep; h+=gStep){
-                    const cx=toC(h,0).x
-                    ctx.beginPath(); ctx.moveTo(cx,0); ctx.lineTo(cx,H); ctx.stroke()
-                    ctx.fillStyle='#98a2b3'; ctx.font='9px sans-serif'; ctx.textAlign='center'
-                    ctx.fillText(h.toFixed(h>=100||h<=-100?0:1)+'m', cx, H-4)
-                }
-                const startV=Math.floor(Math.min(vTop,vBot)/gStep)*gStep
-                for(let v=startV; v<=Math.max(vTop,vBot)+gStep; v+=gStep){
-                    const cy=toC(0,v).y
-                    ctx.beginPath(); ctx.moveTo(0,cy); ctx.lineTo(W,cy); ctx.stroke()
-                    ctx.fillStyle='#98a2b3'; ctx.textAlign='left'
-                    ctx.fillText(v.toFixed(v>=100||v<=-100?0:1)+'m', 2, cy-2)
-                }
-
-                // 轴线
-                const ox=toC(0,0); ctx.strokeStyle='#cbd5e1'; ctx.lineWidth=1.5
-                ctx.beginPath(); ctx.moveTo(ox.x,0); ctx.lineTo(ox.x,H); ctx.stroke()
-                ctx.beginPath(); ctx.moveTo(0,ox.y); ctx.lineTo(W,ox.y); ctx.stroke()
-            }
-
-            // 轴标签
-            ctx.fillStyle='#2563eb'; ctx.font='bold 11px sans-serif'; ctx.textAlign='left'
-            const axH = this.viewTab===0?'X(东)':this.viewTab===1?'X(东)':'Y(北)'
-            const axV = this.viewTab===0?'Y(北)':'Z(高)'
-            ctx.fillText(`→ ${axH}`, W-55, H-6)
-            ctx.save(); ctx.translate(14,50); ctx.rotate(-Math.PI/2); ctx.fillText(`↑ ${axV}`,0,0); ctx.restore()
-
-            if(pts.length===0){
-                ctx.fillStyle='#667085'; ctx.font='14px Roboto,sans-serif'; ctx.textAlign='center'
-                ctx.fillText('暂无轨迹 — 等待 IMU 数据…', W/2, H/2-10)
-                ctx.font='11px Roboto,sans-serif'; ctx.fillStyle='#98a2b3'
-                ctx.fillText('后端以 10Hz 采集 SCALED_IMU2 + ATTITUDE 进行航位推算', W/2, H/2+14)
-                this._drawCurMarker(ctx,W/2,H/2)
-                return
-            }
-
-            // 轨迹线
-            for(let i=1;i<pts.length;i++){
-                const ratio=i/pts.length
-                const a=this._proj(pts[i-1]), b=this._proj(pts[i])
-                const ca=toC(a.h,a.v), cb=toC(b.h,b.v)
-                ctx.beginPath(); ctx.moveTo(ca.x,ca.y); ctx.lineTo(cb.x,cb.y)
-                ctx.strokeStyle=trackColor(ratio); ctx.lineWidth=2; ctx.stroke()
-            }
-
-            // 轨迹点 + 航向箭头
-            for(let i=0;i<pts.length;i++){
-                const ratio=i/pts.length
-                const pr=this._proj(pts[i]); const cp=toC(pr.h,pr.v)
-                ctx.beginPath(); ctx.arc(cp.x,cp.y,2.5,0,Math.PI*2)
-                ctx.fillStyle=trackColor(ratio); ctx.fill()
-
-                if(this.showArrows && i%8===0){
-                    const hdg=this._hdg(pts[i])
-                    const ax=cp.x+Math.sin(hdg)*10, ay=cp.y-Math.cos(hdg)*10
-                    ctx.beginPath(); ctx.moveTo(cp.x,cp.y); ctx.lineTo(ax,ay)
-                    ctx.strokeStyle='rgba(255,193,7,0.65)'; ctx.lineWidth=1.5; ctx.stroke()
-                    ctx.beginPath(); ctx.arc(ax,ay,2,0,Math.PI*2)
-                    ctx.fillStyle='rgba(255,193,7,0.65)'; ctx.fill()
-                }
-            }
-
-            // 起点
-            const sp=this._proj(pts[0]); const sc=toC(sp.h,sp.v)
-            ctx.beginPath(); ctx.arc(sc.x,sc.y,7,0,Math.PI*2)
-            ctx.fillStyle='#76ff03'; ctx.fill()
-            ctx.fillStyle='#172033'; ctx.font='bold 8px sans-serif'; ctx.textAlign='center'
-            ctx.fillText('S',sc.x,sc.y+3)
-
-            // 当前位置
-            const lp=this._proj(pts[pts.length-1]); const lc=toC(lp.h,lp.v)
-            ctx.beginPath(); ctx.arc(lc.x,lc.y,10,0,Math.PI*2)
-            ctx.strokeStyle='rgba(37,99,235,0.22)'; ctx.lineWidth=4; ctx.stroke()
-            this._drawCurMarker(ctx,lc.x,lc.y)
-
-            // 比例尺
-            this._drawScale(ctx,W,H)
+        scrollTerminal() {
+            if (!this.autoScroll) return
+            const el = this.$refs.terminal
+            if (el) el.scrollTop = el.scrollHeight
         },
-
-        _drawCurMarker(ctx,x,y){
-            ctx.beginPath(); ctx.arc(x,y,5,0,Math.PI*2)
-            ctx.fillStyle='#2563eb'; ctx.fill()
-            ctx.strokeStyle='#ffffff'; ctx.lineWidth=1.5; ctx.stroke()
+        fmtAge(v) {
+            if (v == null) return '--'
+            if (v < 1) return `${Math.round(v * 1000)} ms`
+            return `${Number(v).toFixed(1)} s`
         },
-        _drawScale(ctx,W,H){
-            const pxPerM=this.mapScale; if(pxPerM<=0) return
-            const nice=[0.05,0.1,0.2,0.5,1,2,5,10,20,50,100,200,500,1000]
-            const target=80/pxPerM
-            const scaleM=nice.reduce((a,b)=>Math.abs(b-target)<Math.abs(a-target)?b:a)
-            const scaleLen=scaleM*pxPerM
-            const sx=16,sy=H-26
-            ctx.fillStyle='rgba(248,250,252,.92)'; ctx.fillRect(sx-2,sy-14,scaleLen+4,20)
-            ctx.strokeStyle='#0f766e'; ctx.lineWidth=2
-            ctx.beginPath(); ctx.moveTo(sx,sy); ctx.lineTo(sx+scaleLen,sy)
-            ctx.moveTo(sx,sy-5); ctx.lineTo(sx,sy+2)
-            ctx.moveTo(sx+scaleLen,sy-5); ctx.lineTo(sx+scaleLen,sy+2); ctx.stroke()
-            ctx.fillStyle='#0f766e'; ctx.font='10px sans-serif'; ctx.textAlign='center'
-            ctx.fillText(scaleM>=1000?`${scaleM/1000}km`:`${scaleM}m`, sx+scaleLen/2, sy-2)
+        fmtUptime(v) {
+            if (v == null) return '--'
+            const s = Math.max(0, Math.floor(v))
+            const h = String(Math.floor(s / 3600)).padStart(2, '0')
+            const m = String(Math.floor((s % 3600) / 60)).padStart(2, '0')
+            const sec = String(s % 60).padStart(2, '0')
+            return `${h}:${m}:${sec}`
         },
-
-        // ══ 人工地平仪 ════════════════════════════════════════════════════════
-        drawHorizon(){
-            const c=document.getElementById('horizonCanvas'); if(!c) return
-            const ctx=c.getContext('2d'),W=110,H=110,cx=55,cy=55,r=52
-            ctx.clearRect(0,0,W,H)
-            const roll=this.telem.roll||0, pitch=this.telem.pitch||0
-            ctx.save()
-            ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.clip()
-            ctx.translate(cx,cy); ctx.rotate(-roll)
-            const pp=pitch*(r/(Math.PI/4))
-            ctx.fillStyle='#1565c0'; ctx.fillRect(-r,-r-pp,r*2,r+pp+2)
-            ctx.fillStyle='#4e342e'; ctx.fillRect(-r,-pp,r*2,r+pp+2)
-            ctx.strokeStyle='#fff'; ctx.lineWidth=2
-            ctx.beginPath(); ctx.moveTo(-r,-pp); ctx.lineTo(r,-pp); ctx.stroke()
-            ctx.restore()
-            // 飞机符号
-            ctx.strokeStyle='#ffd600'; ctx.lineWidth=2
-            ctx.beginPath(); ctx.moveTo(cx-20,cy); ctx.lineTo(cx-7,cy); ctx.stroke()
-            ctx.beginPath(); ctx.moveTo(cx+7,cy);  ctx.lineTo(cx+20,cy); ctx.stroke()
-            ctx.beginPath(); ctx.arc(cx,cy,3,0,Math.PI*2)
-            ctx.fillStyle='#ffd600'; ctx.fill()
-            // 边框
-            ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2)
-            ctx.strokeStyle='#cbd5e1'; ctx.lineWidth=2; ctx.stroke()
+        f2(v) {
+            return v == null ? '--' : Number(v).toFixed(2)
         },
-
-        // ══ 罗盘 ═════════════════════════════════════════════════════════════
-        drawCompass(){
-            const c=document.getElementById('compassCanvas'); if(!c) return
-            const ctx=c.getContext('2d'),W=110,H=110,cx=55,cy=55,r=50
-            ctx.clearRect(0,0,W,H)
-            ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2)
-            ctx.fillStyle='#f8fafc'; ctx.fill()
-            ctx.strokeStyle='#cbd5e1'; ctx.lineWidth=2; ctx.stroke()
-            const yawDeg=(this.telem.yaw||0)*180/Math.PI
-            for(let i=0;i<36;i++){
-                const angle=(i*10-yawDeg)*Math.PI/180
-                const inner=i%9===0?r-13:r-7
-                ctx.beginPath()
-                ctx.moveTo(cx+Math.cos(angle)*inner,cy+Math.sin(angle)*inner)
-                ctx.lineTo(cx+Math.cos(angle)*(r-2),cy+Math.sin(angle)*(r-2))
-                ctx.strokeStyle=i%9===0?'#0f766e':'#cbd5e1'
-                ctx.lineWidth=i%9===0?2:1; ctx.stroke()
-            }
-            [['N',0],['E',90],['S',180],['W',270]].forEach(([lb,deg])=>{
-                const a=(deg-yawDeg)*Math.PI/180-Math.PI/2
-                const tx=cx+Math.cos(a)*(r-18), ty=cy+Math.sin(a)*(r-18)
-                ctx.fillStyle=lb==='N'?'#dc2626':'#0f766e'
-                ctx.font=`bold ${lb==='N'?13:11}px sans-serif`
-                ctx.textAlign='center'; ctx.textBaseline='middle'
-                ctx.fillText(lb,tx,ty)
-            })
-            ctx.beginPath(); ctx.moveTo(cx,cy-r+7); ctx.lineTo(cx-5,cy+6); ctx.lineTo(cx+5,cy+6)
-            ctx.closePath(); ctx.fillStyle='#f44336'; ctx.fill()
-            ctx.fillStyle='#172033'; ctx.font='bold 11px monospace'
-            ctx.textAlign='center'; ctx.textBaseline='middle'
-            ctx.fillText(((yawDeg%360+360)%360).toFixed(1)+'°',cx,cy+1)
+        f3(v) {
+            return v == null ? '--' : Number(v).toFixed(3)
         },
-
-        // ══ 地图交互 ══════════════════════════════════════════════════════════
-        onWheel(e){
-            const f=e.deltaY<0?1.15:0.87
-            const c=document.getElementById('trackCanvas'), r=c.getBoundingClientRect()
-            const mx=e.clientX-r.left, my=e.clientY-r.top
-            this.mapOX=mx+(this.mapOX-mx)*f; this.mapOY=my+(this.mapOY-my)*f
-            this.mapScale*=f; this._trackDirty=true
+        toast(text, color = 'success') {
+            this.snack = { show: true, text, color }
         },
-        onMD(e){ this.mapDrag=true; this.mapDS={x:e.clientX,y:e.clientY}; this.mapDO={x:this.mapOX,y:this.mapOY} },
-        onMM(e){ if(!this.mapDrag) return; this.mapOX=this.mapDO.x+(e.clientX-this.mapDS.x); this.mapOY=this.mapDO.y+(e.clientY-this.mapDS.y); this._trackDirty=true },
-        onMU(){ this.mapDrag=false },
-        onTS(e){ if(e.touches.length!==1) return; this.mapDrag=true; this.mapDS={x:e.touches[0].clientX,y:e.touches[0].clientY}; this.mapDO={x:this.mapOX,y:this.mapOY} },
-        onTM(e){ if(!this.mapDrag||e.touches.length!==1) return; this.mapOX=this.mapDO.x+(e.touches[0].clientX-this.mapDS.x); this.mapOY=this.mapDO.y+(e.touches[0].clientY-this.mapDS.y); this._trackDirty=true },
-        onTE(){ this.mapDrag=false },
-
-        // ══ EKF 条 ════════════════════════════════════════════════════════════
-        ekfStyle(v,gc,bc){ const p=Math.min((v||0)/2*100,100); return `width:${p}%;background:${p>50?bc:gc}` },
-        mavMsgState(msg){
-            const s=this.telem.mavlink_status && this.telem.mavlink_status[msg]
-            if(!s) return '未尝试'
-            if(s.ok) return 'OK'
-            return s.error || '失败'
+        _download(content, name, type) {
+            const a = document.createElement('a')
+            a.href = URL.createObjectURL(new Blob([content], { type }))
+            a.download = name
+            a.click()
         },
-
-        // ══ 格式化 ════════════════════════════════════════════════════════════
-        fmtDeg(v){ return v!=null?(v*180/Math.PI).toFixed(1):'--' },
-        f2(v){ return v!=null?Number(v).toFixed(2):'--' },
-        f3(v){ return v!=null?Number(v).toFixed(3):'--' },
-        f4(v){ return v!=null?Number(v).toFixed(4):'--' },
-        fmtTime(s){ if(s==null) return '--'; const m=Math.floor(s/60); const sec=Math.floor(s%60); return `${m}:${String(sec).padStart(2,'0')}` },
-        fmtUptime(s=0){ const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=Math.floor(s%60); return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}` },
-        formatBytes(n=0){ if(n<1024) return n+' B'; if(n<1048576) return (n/1024).toFixed(1)+' KB'; return (n/1048576).toFixed(2)+' MB' },
-        toast(t,c='success'){ this.snack={show:true,text:t,color:c} },
-        _dl(content,name,type){ const b=new Blob([content],{type}),a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=name; a.click() },
     },
-
-    mounted(){
-        this._trackDirty = true
-        this.loadPorts(); this.pollStatus(); this.fetchLines(); this.pollTelemetry(); this.pollTrack()
-        setInterval(this.pollStatus,    1000)
-        setInterval(this.fetchLines,     200)
-        setInterval(this.loadPorts,    10000)
-        setInterval(this.pollTelemetry,  150)   // ~7Hz
-        setInterval(this.pollTrack,      300)   // ~3Hz
-        window.addEventListener('resize',()=>{ this._trackDirty=true })
-        // rAF 渲染循环：仅在置脏时重绘轨迹，按显示刷新率合并（替代每次遥测都全量重绘）
-        const loop=()=>{
-            if(this._trackDirty){ this._trackDirty=false; this.renderTrack() }
-            this._rafId=requestAnimationFrame(loop)
-        }
-        this.$nextTick(()=>{ this.drawHorizon(); this.drawCompass(); loop() })
-    },
-})
-
-function now(){ return new Date().toISOString().slice(0,19).replace('T','_') }
+        mounted() {
+            this.loadPorts()
+            this.pollStatus()
+            this.pollElectro()
+            this.fetchLines()
+            setInterval(() => this.pollStatus(), 1000)
+            setInterval(() => this.pollElectro(), 150)
+            setInterval(() => this.fetchLines(), 100)
+            setInterval(() => this.loadPorts(), 10000)
+            window.addEventListener('resize', () => this.scrollTerminal())
+        },
+    })
 </script>
 </html>
