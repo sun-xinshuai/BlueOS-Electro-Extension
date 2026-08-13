@@ -13,52 +13,18 @@
         border: 1px solid #dbe2ea !important;
         box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
     }
-    h1 {
-        margin: 4px 0 12px;
-        font-size: 22px;
-        font-weight: 700;
-        color: #101828;
-    }
-    .status-strip {
-        display: flex;
-        gap: 10px 16px;
-        flex-wrap: wrap;
-        align-items: center;
-        font-size: 12px;
-        color: #475467;
-    }
-    .status-item {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-    }
+    h1 { margin: 4px 0 12px; font-size: 22px; font-weight: 700; color: #101828; }
+    .status-strip { display: flex; gap: 10px 16px; flex-wrap: wrap; align-items: center; font-size: 12px; color: #475467; }
+    .status-item { display: inline-flex; align-items: center; gap: 6px; }
     .dot { width: 10px; height: 10px; border-radius: 999px; display:inline-block; }
     .dot-green { background: #16a34a; }
     .dot-red { background: #ef4444; }
     .dot-yellow { background: #f59e0b; }
     .subtle { color: #667085; font-size: 12px; }
-    .section-title {
-        font-size: 13px;
-        font-weight: 700;
-        color: #101828;
-        margin-bottom: 10px;
-    }
-    .metric {
-        text-align: center;
-        padding: 8px 6px;
-    }
-    .metric-num {
-        font-family: monospace;
-        font-size: 16px;
-        font-weight: 700;
-        color: #0f766e;
-        line-height: 1.2;
-    }
-    .metric-lbl {
-        font-size: 10px;
-        color: #667085;
-        margin-top: 2px;
-    }
+    .section-title { font-size: 13px; font-weight: 700; color: #101828; margin-bottom: 10px; }
+    .metric { text-align: center; padding: 8px 6px; }
+    .metric-num { font-family: monospace; font-size: 16px; font-weight: 700; color: #0f766e; line-height: 1.2; }
+    .metric-lbl { font-size: 10px; color: #667085; margin-top: 2px; }
     .terminal {
         background: #0b1220;
         color: #e5e7eb;
@@ -69,43 +35,15 @@
         padding: 10px 12px;
         border-radius: 6px;
     }
-    .log-line {
-        line-height: 1.55;
-        white-space: pre-wrap;
-        word-break: break-word;
-    }
+    .log-line { line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
     .log-line.is-error .log-text { color: #fda4af; }
-    .log-idx {
-        color: #94a3b8;
-        display: inline-block;
-        width: 54px;
-        text-align: right;
-        margin-right: 8px;
-        user-select: none;
-    }
-    .log-ts {
-        color: #38bdf8;
-        margin-right: 8px;
-        user-select: none;
-    }
-    .bar-row {
-        display: grid;
-        grid-template-columns: 44px 1fr 72px 72px;
-        gap: 8px;
-        align-items: center;
-        margin-bottom: 8px;
-        font-size: 12px;
-    }
+    .log-idx { color: #94a3b8; display: inline-block; width: 54px; text-align: right; margin-right: 8px; user-select: none; }
+    .log-ts { color: #38bdf8; margin-right: 8px; user-select: none; }
+    .bar-row { display: grid; grid-template-columns: 44px 1fr 74px 78px; gap: 8px; align-items: center; margin-bottom: 8px; font-size: 12px; }
     .bar-name { font-weight: 700; color: #344054; }
     .bar-value, .bar-delta { font-family: monospace; color: #475467; text-align: right; }
-    .small-note {
-        font-size: 11px;
-        color: #667085;
-        line-height: 1.5;
-    }
-    @media (max-width: 959px) {
-        .terminal { height: 360px; }
-    }
+    .small-note { font-size: 11px; color: #667085; line-height: 1.5; }
+    @media (max-width: 959px) { .terminal { height: 360px; } }
 </style>
 <div id="app">
 <v-app>
@@ -125,18 +63,26 @@
                 <span>{{ status.enabled ? 'reader enabled' : 'reader disabled' }}</span>
             </div>
             <div class="status-item">
+                <span class="dot" :class="telem.capturing_null ? 'dot-green' : 'dot-yellow'"></span>
+                <span>{{ telem.capturing_null ? 'null capturing' : 'null idle' }}</span>
+            </div>
+            <div class="status-item">
+                <span class="dot" :class="telem.pending_baseline_ready ? 'dot-green' : 'dot-yellow'"></span>
+                <span>{{ telem.pending_baseline_ready ? 'baseline pending' : 'no pending baseline' }}</span>
+            </div>
+            <div class="status-item">
                 <span class="dot" :class="telem.baseline_ready ? 'dot-green' : 'dot-yellow'"></span>
-                <span>{{ telem.baseline_ready ? 'baseline ready' : 'null baseline missing' }}</span>
+                <span>{{ telem.baseline_ready ? 'baseline saved' : 'baseline missing' }}</span>
+            </div>
+            <div class="status-item">
+                <span class="dot" :class="telem.compute_enabled ? 'dot-green' : 'dot-yellow'"></span>
+                <span>{{ telem.compute_enabled ? 'inversion running' : 'inversion stopped' }}</span>
             </div>
             <div class="status-item">history {{ status.history_size || 0 }}</div>
             <div class="status-item">rx {{ fmtAge(status.last_rx_age) }}</div>
-            <div class="status-item">uptime {{ fmtUptime(status.uptime) }}</div>
             <div class="status-item">sample {{ telem.sample_rate_hz || 100 }} Hz</div>
             <div class="status-item">target {{ telem.target_hz || 20 }} Hz</div>
             <div class="status-item">cond {{ telem.conductivity_uS_cm || 800 }} uS/cm</div>
-        </div>
-        <div class="mt-2 small-note">
-            Fixed cache is held on the device; export will include everything currently in the ring buffer.
         </div>
     </v-card>
 
@@ -146,15 +92,21 @@
                 <div class="d-flex align-center justify-space-between flex-wrap mb-2">
                     <div>
                         <div class="section-title mb-1">Boundary inversion</div>
-                        <div class="subtle">Null baseline first, then estimate distance from the right-side feature.</div>
+                        <div class="subtle">Manual null capture, save baseline, then start normal inversion.</div>
                     </div>
                     <div class="d-flex align-center" style="gap:8px;flex-wrap:wrap">
-                        <v-text-field v-model.number="nullSeconds" type="number" min="1" step="1" dense outlined hide-details style="max-width:110px"></v-text-field>
-                        <v-btn small color="primary" @click="captureNull"><v-icon left small>mdi-database-plus</v-icon>null采集</v-btn>
-                        <v-btn small color="warning" @click="loadBaseline"><v-icon left small>mdi-restore</v-icon>重载基线</v-btn>
-                        <v-btn small color="error" outlined @click="clearBaseline"><v-icon left small>mdi-delete-forever</v-icon>清空基线</v-btn>
+                        <v-btn small color="primary" :disabled="telem.capturing_null" @click="startNull"><v-icon left small>mdi-record-circle</v-icon>start null</v-btn>
+                        <v-btn small color="warning" :disabled="!telem.capturing_null" @click="stopNull"><v-icon left small>mdi-stop-circle</v-icon>stop null</v-btn>
+                        <v-btn small color="secondary" :disabled="!telem.pending_baseline_ready" @click="saveBaseline"><v-icon left small>mdi-content-save</v-icon>save baseline</v-btn>
+                        <v-btn small :color="telem.compute_enabled ? 'error' : 'primary'" :disabled="telem.capturing_null" @click="toggleCompute">
+                            <v-icon left small>{{ telem.compute_enabled ? 'mdi-pause' : 'mdi-play' }}</v-icon>{{ telem.compute_enabled ? 'stop compute' : 'start compute' }}
+                        </v-btn>
+                        <v-btn small text @click="loadBaseline"><v-icon left small>mdi-restore</v-icon>reload</v-btn>
+                        <v-btn small text color="error" @click="clearBaseline"><v-icon left small>mdi-delete-forever</v-icon>clear</v-btn>
                     </div>
                 </div>
+
+                <v-alert dense text :type="alertType" class="mb-2">{{ analysisStatusText }}</v-alert>
 
                 <v-row no-gutters>
                     <v-col cols="6" sm="3" class="metric">
@@ -178,28 +130,28 @@
                 <v-divider class="my-2"></v-divider>
 
                 <v-row no-gutters>
-                    <v-col cols="6" sm="4" class="metric">
+                    <v-col cols="6" sm="3" class="metric">
                         <div class="metric-num" style="font-size:22px;color:#0369a1">{{ f2(telem.estimated_distance_cm) }}</div>
-                        <div class="metric-lbl">estimated distance cm</div>
+                        <div class="metric-lbl">distance cm</div>
                     </v-col>
-                    <v-col cols="6" sm="4" class="metric">
+                    <v-col cols="6" sm="3" class="metric">
                         <div class="metric-num" style="font-size:22px;color:#7c3aed">{{ f3(telem.baseline_feature_mv) }}</div>
-                        <div class="metric-lbl">baseline feature</div>
+                        <div class="metric-lbl">saved baseline</div>
                     </v-col>
-                    <v-col cols="12" sm="4" class="metric">
-                        <div class="metric-num" style="font-size:22px;color:#0f766e">{{ telem.null_progress != null ? Math.round((telem.null_progress || 0) * 100) : 0 }}%</div>
-                        <div class="metric-lbl">null progress</div>
+                    <v-col cols="6" sm="3" class="metric">
+                        <div class="metric-num" style="font-size:22px;color:#7c3aed">{{ f3(telem.pending_baseline_feature_mv) }}</div>
+                        <div class="metric-lbl">pending baseline</div>
+                    </v-col>
+                    <v-col cols="6" sm="3" class="metric">
+                        <div class="metric-num" style="font-size:22px;color:#0f766e">{{ telem.null_windows_collected || 0 }}</div>
+                        <div class="metric-lbl">null windows</div>
                     </v-col>
                 </v-row>
-
-                <div class="mt-2">
-                    <v-progress-linear :value="(telem.null_progress || 0) * 100" height="10" color="teal"></v-progress-linear>
-                </div>
 
                 <v-divider class="my-3"></v-divider>
 
                 <div class="section-title">Channel amplitudes</div>
-                <div v-for="(amp, i) in (telem.channel_amp_mv || [])" :key="i" class="bar-row">
+                <div v-for="(amp, i) in channelAmps" :key="i" class="bar-row">
                     <div class="bar-name">CH{{ i }}</div>
                     <v-progress-linear :value="channelPct(i)" height="8" rounded :color="i >= 4 ? 'indigo' : 'blue-grey lighten-1'"></v-progress-linear>
                     <div class="bar-value">{{ f2(amp) }} mV</div>
@@ -207,7 +159,7 @@
                 </div>
 
                 <div class="small-note mt-2">
-                    Feature uses CH4/CH5 against the other six channels, then maps the baseline-corrected 20 Hz response to distance.
+                    Feature = mean(CH4, CH5) - mean(CH0, CH1, CH2, CH3, CH6, CH7).
                 </div>
             </v-card>
         </v-col>
@@ -286,8 +238,8 @@ new Vue({
             themes: { light: { primary: '#2563eb', warning: '#d97706', error: '#dc2626', secondary: '#0f766e' } }
         }
     }),
-        data() {
-            return {
+    data() {
+        return {
             status: { connected: false, enabled: true, port: '', baud: 115200, error: null, history_size: 0, uptime: 0, last_rx_age: null },
             telem: {},
             lines: [],
@@ -300,19 +252,38 @@ new Vue({
             filterText: '',
             autoScroll: true,
             showTs: true,
-            nullSeconds: 8,
             lineCap: 1200,
             _lineBusy: false,
             snack: { show: false, text: '', color: 'success' },
         }
     },
     computed: {
+        channelAmps() {
+            return this.telem.channel_amp_mv || [null, null, null, null, null, null, null, null]
+        },
         filteredLines() {
             const q = (this.filterText || '').trim().toLowerCase()
             const src = this.lines.slice(-this.lineCap)
             if (!q) return src
             return src.filter(l => (l.raw || '').toLowerCase().includes(q))
-        }
+        },
+        alertType() {
+            if (this.telem.capturing_null) return 'info'
+            if (this.telem.pending_baseline_ready) return 'success'
+            if (this.telem.compute_enabled) return 'success'
+            return this.telem.baseline_ready ? 'warning' : 'error'
+        },
+        analysisStatusText() {
+            if (this.telem.capturing_null) {
+                return `Collecting null windows: ${this.telem.null_windows_collected || 0}. Click stop null when the ROV is stable in open water.`
+            }
+            if (this.telem.pending_baseline_ready) {
+                return `Null capture stopped. Pending baseline feature: ${this.f3(this.telem.pending_baseline_feature_mv)} mV. Click save baseline.`
+            }
+            if (!this.telem.baseline_ready) return 'No saved baseline. Capture null, stop null, then save baseline.'
+            if (!this.telem.compute_enabled) return 'Baseline is ready. Click start compute to run boundary inversion.'
+            return 'Normal inversion is running.'
+        },
     },
     methods: {
         pollStatus() {
@@ -335,19 +306,14 @@ new Vue({
                 const incoming = r.data || []
                 if (!incoming.length) return
                 this.lines.push(...incoming)
-                if (this.lines.length > this.lineCap) {
-                    this.lines = this.lines.slice(-this.lineCap)
-                }
+                if (this.lines.length > this.lineCap) this.lines = this.lines.slice(-this.lineCap)
                 this.lastIndex = incoming[incoming.length - 1].index
                 this.$nextTick(this.scrollTerminal)
             }).catch(() => {}).finally(() => { this._lineBusy = false })
         },
         loadPorts() {
             axios.get('/list_ports', { timeout: 2000 }).then(r => {
-                this.portItems = (r.data || []).map(p => ({
-                    device: p.device,
-                    label: `${p.device} (${p.description || 'port'})`
-                }))
+                this.portItems = (r.data || []).map(p => ({ device: p.device, label: `${p.device} (${p.description || 'port'})` }))
             }).catch(() => {})
         },
         setEnabled(v) {
@@ -362,6 +328,7 @@ new Vue({
                 this.lines = []
                 this.lastIndex = 0
                 this.toast('history cleared')
+                this.pollElectro()
             })
         },
         exportLog() {
@@ -372,17 +339,41 @@ new Vue({
                 this.toast(`exported ${rows.length} lines`)
             }).catch(() => this.toast('export failed', 'error'))
         },
-        captureNull() {
-            axios.get(`/capture_null?seconds=${Math.max(1, Number(this.nullSeconds || 8))}`).then(() => {
+        startNull() {
+            axios.get('/capture_null').then(r => {
+                this.telem = r.data || this.telem
                 this.toast('null capture started')
             }).catch(() => this.toast('capture failed', 'error'))
         },
+        stopNull() {
+            axios.get('/stop_null_capture', { timeout: 5000 }).then(r => {
+                this.telem = r.data || this.telem
+                this.toast(this.telem.pending_baseline_ready ? 'null capture stopped' : 'no null windows collected', this.telem.pending_baseline_ready ? 'success' : 'warning')
+            }).catch(() => this.toast('stop failed', 'error'))
+        },
+        saveBaseline() {
+            axios.get('/save_baseline', { timeout: 5000 }).then(r => {
+                this.telem = r.data || this.telem
+                this.toast(this.telem.baseline_ready ? 'baseline saved' : 'baseline not ready', this.telem.baseline_ready ? 'success' : 'warning')
+            }).catch(() => this.toast('save failed', 'error'))
+        },
+        toggleCompute() {
+            const next = !this.telem.compute_enabled
+            axios.get(`/set_compute/${next}`).then(r => {
+                this.telem = r.data || this.telem
+                this.toast(next ? 'compute started' : 'compute stopped')
+            }).catch(() => this.toast('compute switch failed', 'error'))
+        },
         clearBaseline() {
-            axios.get('/clear_baseline').then(() => this.toast('baseline cleared'))
+            axios.get('/clear_baseline').then(() => {
+                this.toast('baseline cleared')
+                this.pollElectro()
+            })
         },
         loadBaseline() {
             axios.get('/load_baseline').then(r => {
-                this.toast(r.data ? 'baseline loaded' : 'baseline missing')
+                this.toast(r.data ? 'baseline loaded' : 'baseline missing', r.data ? 'success' : 'warning')
+                this.pollElectro()
             }).catch(() => this.toast('load failed', 'error'))
         },
         channelDelta(i) {
@@ -407,20 +398,8 @@ new Vue({
             if (v < 1) return `${Math.round(v * 1000)} ms`
             return `${Number(v).toFixed(1)} s`
         },
-        fmtUptime(v) {
-            if (v == null) return '--'
-            const s = Math.max(0, Math.floor(v))
-            const h = String(Math.floor(s / 3600)).padStart(2, '0')
-            const m = String(Math.floor((s % 3600) / 60)).padStart(2, '0')
-            const sec = String(s % 60).padStart(2, '0')
-            return `${h}:${m}:${sec}`
-        },
-        f2(v) {
-            return v == null ? '--' : Number(v).toFixed(2)
-        },
-        f3(v) {
-            return v == null ? '--' : Number(v).toFixed(3)
-        },
+        f2(v) { return v == null ? '--' : Number(v).toFixed(2) },
+        f3(v) { return v == null ? '--' : Number(v).toFixed(3) },
         toast(text, color = 'success') {
             this.snack = { show: true, text, color }
         },
@@ -431,17 +410,17 @@ new Vue({
             a.click()
         },
     },
-        mounted() {
-            this.loadPorts()
-            this.pollStatus()
-            this.pollElectro()
-            this.fetchLines()
-            setInterval(() => this.pollStatus(), 1000)
-            setInterval(() => this.pollElectro(), 150)
-            setInterval(() => this.fetchLines(), 100)
-            setInterval(() => this.loadPorts(), 10000)
-            window.addEventListener('resize', () => this.scrollTerminal())
-        },
-    })
+    mounted() {
+        this.loadPorts()
+        this.pollStatus()
+        this.pollElectro()
+        this.fetchLines()
+        setInterval(() => this.pollStatus(), 1000)
+        setInterval(() => this.pollElectro(), 150)
+        setInterval(() => this.fetchLines(), 100)
+        setInterval(() => this.loadPorts(), 10000)
+        window.addEventListener('resize', () => this.scrollTerminal())
+    },
+})
 </script>
 </html>

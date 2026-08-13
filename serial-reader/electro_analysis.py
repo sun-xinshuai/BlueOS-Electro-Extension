@@ -19,10 +19,11 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 
 SAMPLE_RE = re.compile(
-    r"^\[(\d\d):(\d\d):(\d\d)\.(\d{3})\]\s+"
-    r"SEQ:(\d+)\s+"
-    r"(-?\d+),(-?\d+),(-?\d+),(-?\d+),(-?\d+),(-?\d+),(-?\d+),(-?\d+)\s+"
-    r"OK:(\d+)\s+DROP:(\d+)\s+OVERRUN:(\d+)"
+    r"^(?:\[(?P<hh>\d\d):(?P<mm>\d\d):(?P<ss>\d\d)\.(?P<ms>\d{3})\]\s+)?"
+    r"SEQ:(?P<seq>\d+)\s+"
+    r"(?P<ch0>-?\d+),(?P<ch1>-?\d+),(?P<ch2>-?\d+),(?P<ch3>-?\d+),"
+    r"(?P<ch4>-?\d+),(?P<ch5>-?\d+),(?P<ch6>-?\d+),(?P<ch7>-?\d+)\s+"
+    r"OK:(?P<ok>\d+)\s+DROP:(?P<drop>\d+)\s+OVERRUN:(?P<overrun>\d+)"
 )
 
 
@@ -135,6 +136,9 @@ class ElectroAnalyzer:
 
         self._capture_mode = None
         self._capture_windows = []
+        self._pending_baseline_channels_mv = None
+        self._pending_baseline_feature_mv = None
+        self._compute_enabled = False
 
         self._state = self._empty_state()
         self.load_baseline()
@@ -145,10 +149,17 @@ class ElectroAnalyzer:
         self._state["baseline_feature_mv"] = self._baseline_feature_mv
         self._state["baseline_saved_at"] = self._baseline_saved_at
         self._state["baseline_source"] = self._baseline_source
+        self._state["compute_enabled"] = self._compute_enabled
+        self._state["pending_baseline_ready"] = self._pending_baseline_feature_mv is not None
+        self._state["pending_baseline_feature_mv"] = self._pending_baseline_feature_mv
         if self._baseline_channels_mv is not None:
             self._state["baseline_channel_amp_mv"] = list(self._baseline_channels_mv)
         else:
             self._state["baseline_channel_amp_mv"] = None
+        if self._pending_baseline_channels_mv is not None:
+            self._state["pending_baseline_channel_amp_mv"] = list(self._pending_baseline_channels_mv)
+        else:
+            self._state["pending_baseline_channel_amp_mv"] = None
 
     def _empty_state(self) -> Dict[str, object]:
         return {
@@ -161,6 +172,9 @@ class ElectroAnalyzer:
             "baseline_feature_mv": self._baseline_feature_mv,
             "baseline_saved_at": self._baseline_saved_at,
             "baseline_source": self._baseline_source,
+            "compute_enabled": self._compute_enabled,
+            "pending_baseline_ready": self._pending_baseline_feature_mv is not None,
+            "pending_baseline_feature_mv": self._pending_baseline_feature_mv,
             "capturing_null": False,
             "null_progress": 0.0,
             "null_windows_collected": 0,
@@ -224,6 +238,8 @@ class ElectroAnalyzer:
             self._baseline_feature_mv = None
             self._baseline_saved_at = None
             self._baseline_source = None
+            self._pending_baseline_channels_mv = None
+            self._pending_baseline_feature_mv = None
             self._capture_mode = None
             self._capture_windows = []
             try:
@@ -242,25 +258,86 @@ class ElectroAnalyzer:
             self._history.clear()
             self._capture_mode = None
             self._capture_windows = []
+            self._pending_baseline_channels_mv = None
+            self._pending_baseline_feature_mv = None
             self._state["capturing_null"] = False
             self._state["null_progress"] = 0.0
             self._state["null_windows_collected"] = 0
             self._state["null_windows_target"] = 0
+            self._state["pending_baseline_ready"] = False
+            self._state["pending_baseline_feature_mv"] = None
             self._state["history"] = []
 
+    def set_compute_enabled(self, enabled: bool) -> Dict[str, object]:
+        with self._lock:
+            self._compute_enabled = bool(enabled)
+            self._state["compute_enabled"] = self._compute_enabled
+            if not self._compute_enabled:
+                self._state["ready"] = self._baseline_feature_mv is not None
+        return self.get_state()
+
     def start_null_capture(self, seconds: float = 8.0) -> Dict[str, object]:
-        seconds = max(1.0, float(seconds))
-        target_windows = max(10, int(seconds * self.sample_rate_hz / float(self.step_size)))
         with self._lock:
             self._capture_mode = {
-                "target_windows": target_windows,
                 "captured_at": time.time(),
             }
             self._capture_windows = []
             self._state["capturing_null"] = True
             self._state["null_progress"] = 0.0
             self._state["null_windows_collected"] = 0
-            self._state["null_windows_target"] = target_windows
+            self._state["null_windows_target"] = 0
+            self._state["pending_baseline_ready"] = False
+            self._state["pending_baseline_feature_mv"] = None
+            self._pending_baseline_channels_mv = None
+            self._pending_baseline_feature_mv = None
+        return self.get_state()
+
+    def stop_null_capture(self) -> Dict[str, object]:
+        with self._lock:
+            if self._capture_mode is None or not self._capture_windows:
+                self._state["capturing_null"] = False
+                self._state["null_progress"] = 0.0
+                self._state["null_windows_collected"] = len(self._capture_windows)
+            else:
+                captured = len(self._capture_windows)
+                baseline = [0.0] * 8
+                for ch in range(8):
+                    baseline[ch] = sum(window_amp[ch] for window_amp in self._capture_windows) / float(captured)
+                feature = (
+                    sum(baseline[i] for i in self.right_idx) / len(self.right_idx)
+                    - sum(baseline[i] for i in self.ref_idx) / len(self.ref_idx)
+                )
+                self._pending_baseline_channels_mv = baseline
+                self._pending_baseline_feature_mv = feature
+                self._capture_mode = None
+                self._capture_windows = []
+                self._state["capturing_null"] = False
+                self._state["null_progress"] = 1.0
+                self._state["null_windows_collected"] = captured
+                self._state["pending_baseline_ready"] = True
+                self._state["pending_baseline_feature_mv"] = feature
+                self._state["pending_baseline_channel_amp_mv"] = list(baseline)
+        return self.get_state()
+
+    def save_baseline(self) -> Dict[str, object]:
+        with self._lock:
+            if self._pending_baseline_feature_mv is None or self._pending_baseline_channels_mv is None:
+                return self.get_state()
+            self._baseline_channels_mv = list(self._pending_baseline_channels_mv)
+            self._baseline_feature_mv = float(self._pending_baseline_feature_mv)
+            self._baseline_saved_at = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+            self._baseline_source = "captured"
+            self._save_baseline()
+            self._pending_baseline_channels_mv = None
+            self._pending_baseline_feature_mv = None
+            self._state["baseline_ready"] = True
+            self._state["baseline_feature_mv"] = self._baseline_feature_mv
+            self._state["baseline_saved_at"] = self._baseline_saved_at
+            self._state["baseline_source"] = self._baseline_source
+            self._state["pending_baseline_ready"] = False
+            self._state["pending_baseline_feature_mv"] = None
+            self._state["pending_baseline_channel_amp_mv"] = None
+            self._sync_baseline_state()
         return self.get_state()
 
     def get_state(self) -> Dict[str, object]:
@@ -288,12 +365,19 @@ class ElectroAnalyzer:
         match = SAMPLE_RE.match(raw_line.strip())
         if not match:
             return None
-        hh, mm, ss, ms = map(int, match.group(1, 2, 3, 4))
-        seq = int(match.group(5))
-        counts = [int(x) for x in match.group(6, 7, 8, 9, 10, 11, 12, 13)]
+        if match.group("hh") is not None:
+            hh = int(match.group("hh"))
+            mm = int(match.group("mm"))
+            ss = int(match.group("ss"))
+            ms = int(match.group("ms"))
+            sample_ts = ((hh * 60 + mm) * 60 + ss) + ms / 1000.0
+        else:
+            sample_ts = time.time()
+        seq = int(match.group("seq"))
+        counts = [int(match.group(f"ch{i}")) for i in range(8)]
         return {
             "seq": seq,
-            "ts": ((hh * 60 + mm) * 60 + ss) + ms / 1000.0,
+            "ts": sample_ts,
             "counts": counts,
         }
 
@@ -310,7 +394,8 @@ class ElectroAnalyzer:
             self._last_seq = seq
             self._sample_buffer.append(sample)
             self._samples_since_compute += 1
-            if len(self._sample_buffer) >= self.window_size and self._samples_since_compute >= self.step_size:
+            should_compute = self._compute_enabled or self._capture_mode is not None
+            if should_compute and len(self._sample_buffer) >= self.window_size and self._samples_since_compute >= self.step_size:
                 self._samples_since_compute = 0
                 self._compute_state()
 
@@ -385,31 +470,10 @@ class ElectroAnalyzer:
             if self._capture_mode is not None:
                 self._capture_windows.append(feats["channel_amp_mv"])
                 captured = len(self._capture_windows)
-                target = int(self._capture_mode["target_windows"])
                 self._state["capturing_null"] = True
                 self._state["null_windows_collected"] = captured
-                self._state["null_windows_target"] = target
-                self._state["null_progress"] = min(1.0, float(captured) / float(target))
-                if captured >= target:
-                    baseline = [0.0] * 8
-                    for ch in range(8):
-                        baseline[ch] = sum(window_amp[ch] for window_amp in self._capture_windows) / float(captured)
-                    self._baseline_channels_mv = baseline
-                    self._baseline_feature_mv = (
-                        sum(baseline[i] for i in self.right_idx) / len(self.right_idx)
-                        - sum(baseline[i] for i in self.ref_idx) / len(self.ref_idx)
-                    )
-                    self._baseline_saved_at = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-                    self._baseline_source = "captured"
-                    self._save_baseline()
-                    self._capture_mode = None
-                    self._capture_windows = []
-                    self._state["capturing_null"] = False
-                    self._state["null_progress"] = 1.0
-                    self._state["baseline_ready"] = True
-                    self._state["baseline_feature_mv"] = self._baseline_feature_mv
-                    self._state["baseline_saved_at"] = self._baseline_saved_at
-                    self._state["baseline_source"] = self._baseline_source
+                self._state["null_windows_target"] = 0
+                self._state["null_progress"] = 0.0
             else:
                 self._state["capturing_null"] = False
                 self._state["null_progress"] = 0.0

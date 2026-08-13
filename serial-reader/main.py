@@ -57,6 +57,15 @@ class API:
     def capture_null(self, seconds=8.0):
         return self.analyzer.start_null_capture(seconds)
 
+    def stop_null_capture(self):
+        return self.analyzer.stop_null_capture()
+
+    def save_baseline(self):
+        return self.analyzer.save_baseline()
+
+    def set_compute_enabled(self, enabled):
+        return self.analyzer.set_compute_enabled(enabled)
+
     def clear_baseline(self):
         self.analyzer.clear_baseline()
         return True
@@ -151,6 +160,23 @@ def capture_null():
     except Exception:
         seconds = 8.0
     return json.dumps(api.capture_null(seconds))
+
+
+@app.route("/stop_null_capture")
+def stop_null_capture():
+    return json.dumps(api.stop_null_capture())
+
+
+@app.route("/save_baseline")
+def save_baseline():
+    return json.dumps(api.save_baseline())
+
+
+@app.route("/set_compute/<enable>")
+def set_compute(enable):
+    if enable in ["true", "false"]:
+        return json.dumps(api.set_compute_enabled(enable == "true"))
+    return json.dumps(False)
 
 
 @app.route("/clear_baseline")
