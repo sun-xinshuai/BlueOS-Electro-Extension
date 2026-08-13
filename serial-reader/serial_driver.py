@@ -13,7 +13,7 @@ import serial
 import serial.tools.list_ports
 from loguru import logger
 
-MAX_HISTORY = 8000
+MAX_HISTORY = 1024
 DEFAULT_PORT = "/dev/ttyAMA0"
 #DEFAULT_PORT = "/dev/serial1"
 DEFAULT_BAUD = 115200

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Active electro-sensing analysis for real BlueOS serial data.
+"""Active electro-sensing FFT analysis for real BlueOS serial data.
 
 The analyzer keeps a fixed-size 1 s window at 100 Hz, extracts the 20 Hz
 response with a narrow-band FFT-like estimator, and supports a captured null
-baseline for boundary-distance inversion.
+baseline plus manual labels for later model fitting.
 """
 
 from __future__ import annotations
@@ -102,8 +102,6 @@ class ElectroAnalyzer:
         step_size: int = 10,
         adc_full_scale_mv: float = 10000.0,
         conductivity_uS_cm: float = 800.0,
-        model_a_mv: float = 12.932008,
-        model_l_cm: float = 34.834192,
     ):
         self.driver = driver
         self.baseline_path = Path(baseline_path)
@@ -113,8 +111,6 @@ class ElectroAnalyzer:
         self.step_size = int(step_size)
         self.adc_full_scale_mv = float(adc_full_scale_mv)
         self.conductivity_uS_cm = float(conductivity_uS_cm)
-        self.model_a_mv = float(model_a_mv)
-        self.model_l_cm = float(model_l_cm)
 
         self.ref_idx = [0, 1, 2, 3, 6, 7]
         self.right_idx = [4, 5]
@@ -128,6 +124,7 @@ class ElectroAnalyzer:
         self._last_seq = None
 
         self._history = deque(maxlen=240)
+        self._labels = deque(maxlen=1024)
 
         self._baseline_channels_mv = None
         self._baseline_feature_mv = None
@@ -184,15 +181,13 @@ class ElectroAnalyzer:
             "target_amp_mv": None,
             "raw_feature_mv": None,
             "delta_feature_mv": None,
-            "estimated_distance_cm": None,
             "channel_amp_mv": [None] * 8,
             "channel_delta_mv": [None] * 8,
             "history": [],
+            "label_count": 0,
             "last_seq": None,
             "seq_range": None,
             "window_timestamp": None,
-            "model_a_mv": self.model_a_mv,
-            "model_l_cm": self.model_l_cm,
         }
 
     def start(self) -> None:
@@ -225,8 +220,6 @@ class ElectroAnalyzer:
             "target_hz": self.target_hz,
             "window_size": self.window_size,
             "conductivity_uS_cm": self.conductivity_uS_cm,
-            "model_a_mv": self.model_a_mv,
-            "model_l_cm": self.model_l_cm,
             "channel_amp_mv": self._baseline_channels_mv,
             "feature_mv": self._baseline_feature_mv,
         }
@@ -256,6 +249,7 @@ class ElectroAnalyzer:
             self._samples_since_compute = 0
             self._last_seq = None
             self._history.clear()
+            self._labels.clear()
             self._capture_mode = None
             self._capture_windows = []
             self._pending_baseline_channels_mv = None
@@ -267,6 +261,47 @@ class ElectroAnalyzer:
             self._state["pending_baseline_ready"] = False
             self._state["pending_baseline_feature_mv"] = None
             self._state["history"] = []
+            self._state["label_count"] = 0
+
+    def add_label(self, distance_cm: float, note: str = "") -> Dict[str, object]:
+        with self._lock:
+            channel_amp = self._state.get("channel_amp_mv")
+            if not channel_amp or channel_amp[0] is None:
+                return {"ok": False, "error": "FFT state is not ready", "label_count": len(self._labels)}
+            label = {
+                "id": len(self._labels) + 1,
+                "created_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+                "ts": time.time(),
+                "distance_cm": float(distance_cm),
+                "note": str(note or ""),
+                "sample_rate_hz": self.sample_rate_hz,
+                "target_hz": self.target_hz,
+                "window_size": self.window_size,
+                "seq_range": self._state.get("seq_range"),
+                "last_seq": self._state.get("last_seq"),
+                "peak_freq_hz": self._state.get("peak_freq_hz"),
+                "peak_amp_mv": self._state.get("peak_amp_mv"),
+                "target_amp_mv": self._state.get("target_amp_mv"),
+                "raw_feature_mv": self._state.get("raw_feature_mv"),
+                "delta_feature_mv": self._state.get("delta_feature_mv"),
+                "channel_amp_mv": list(channel_amp),
+                "channel_delta_mv": list(self._state.get("channel_delta_mv") or []),
+                "baseline_feature_mv": self._baseline_feature_mv,
+                "baseline_saved_at": self._baseline_saved_at,
+            }
+            self._labels.append(label)
+            self._state["label_count"] = len(self._labels)
+            return {"ok": True, "label": label, "label_count": len(self._labels)}
+
+    def clear_labels(self) -> Dict[str, object]:
+        with self._lock:
+            self._labels.clear()
+            self._state["label_count"] = 0
+            return {"ok": True, "label_count": 0}
+
+    def export_labels(self) -> List[Dict[str, object]]:
+        with self._lock:
+            return list(self._labels)
 
     def set_compute_enabled(self, enabled: bool) -> Dict[str, object]:
         with self._lock:
@@ -348,12 +383,12 @@ class ElectroAnalyzer:
             else:
                 state["baseline_channel_amp_mv"] = None
             state["history"] = list(self._history)
+            state["label_count"] = len(self._labels)
             return state
 
     def _append_history(self, snapshot: Dict[str, object]) -> None:
         entry = {
             "ts": time.time(),
-            "distance_cm": snapshot.get("estimated_distance_cm"),
             "delta_feature_mv": snapshot.get("delta_feature_mv"),
             "raw_feature_mv": snapshot.get("raw_feature_mv"),
             "peak_freq_hz": snapshot.get("peak_freq_hz"),
@@ -436,9 +471,6 @@ class ElectroAnalyzer:
                                sum(channel_amp_mv[i] for i in self.ref_idx) / len(self.ref_idx))
         baseline_feature_mv = self._baseline_feature_mv if self._baseline_feature_mv is not None else 0.0
         delta_feature_mv = raw_feature_mv - baseline_feature_mv
-        estimated_distance_cm = None
-        if self._baseline_feature_mv is not None and delta_feature_mv > 1e-9:
-            estimated_distance_cm = -self.model_l_cm * math.log(delta_feature_mv / self.model_a_mv)
 
         peak_index = max(range(len(channel_amp_mv)), key=lambda i: channel_amp_mv[i])
         peak_freq_hz = channel_peak_freq_hz[peak_index]
@@ -453,7 +485,6 @@ class ElectroAnalyzer:
             "channel_delta_mv": channel_delta_mv,
             "raw_feature_mv": raw_feature_mv,
             "delta_feature_mv": delta_feature_mv,
-            "estimated_distance_cm": estimated_distance_cm,
             "peak_freq_hz": peak_freq_hz,
             "peak_amp_mv": peak_amp_mv,
             "target_amp_mv": target_amp_mv,
@@ -489,7 +520,6 @@ class ElectroAnalyzer:
                 "target_amp_mv": round(feats["target_amp_mv"], 3),
                 "raw_feature_mv": round(feats["raw_feature_mv"], 4),
                 "delta_feature_mv": round(feats["delta_feature_mv"], 4),
-                "estimated_distance_cm": None if feats["estimated_distance_cm"] is None else round(feats["estimated_distance_cm"], 2),
                 "channel_amp_mv": [round(v, 3) for v in feats["channel_amp_mv"]],
                 "channel_delta_mv": [None if v is None else round(v, 3) for v in feats["channel_delta_mv"]],
                 "window_timestamp": window[-1]["ts"],

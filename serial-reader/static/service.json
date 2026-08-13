@@ -1,6 +1,6 @@
 {
-    "name": "Active Electro Boundary",
-    "description": "实时读取串口数据，进行主动电场边界反演与日志显示",
+    "name": "Active Electro FFT",
+    "description": "实时读取串口数据，进行主动电场FFT、基线采集和人工标注",
     "icon": "mdi-serial-port",
     "company": "Your Company",
     "version": "1.0.0",
