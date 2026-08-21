@@ -23,7 +23,10 @@ SAMPLE_RE = re.compile(
     r"SEQ:(?P<seq>\d+)\s+"
     r"(?P<ch0>-?\d+),(?P<ch1>-?\d+),(?P<ch2>-?\d+),(?P<ch3>-?\d+),"
     r"(?P<ch4>-?\d+),(?P<ch5>-?\d+),(?P<ch6>-?\d+),(?P<ch7>-?\d+)\s+"
-    r"OK:(?P<ok>\d+)\s+DROP:(?P<drop>\d+)\s+OVERRUN:(?P<overrun>\d+)"
+    r"OK:(?P<ok>\d+)"
+    r"(?:\s+POS:(?P<pos_id>-?\d+),(?P<pos_x>-?\d+),(?P<pos_y>-?\d+),(?P<pos_z>-?\d+)"
+    r"\s+PV:(?P<pos_valid>\d+)\s+PSEQ:(?P<pos_seq>\d+))?"
+    r"\s+DROP:(?P<drop>\d+)\s+OVERRUN:(?P<overrun>\d+)"
 )
 
 
@@ -122,8 +125,10 @@ class ElectroAnalyzer:
         self._sample_buffer = deque(maxlen=max(self.window_size * 4, 400))
         self._samples_since_compute = 0
         self._last_seq = None
+        self._last_pose = None
 
         self._history = deque(maxlen=240)
+        self._trajectory = deque(maxlen=600)
         self._labels = deque(maxlen=1024)
 
         self._baseline_channels_mv = None
@@ -184,6 +189,9 @@ class ElectroAnalyzer:
             "channel_amp_mv": [None] * 8,
             "channel_delta_mv": [None] * 8,
             "history": [],
+            "position": None,
+            "trajectory": [],
+            "trajectory_enabled": False,
             "label_count": 0,
             "last_seq": None,
             "seq_range": None,
@@ -248,7 +256,9 @@ class ElectroAnalyzer:
             self._sample_buffer.clear()
             self._samples_since_compute = 0
             self._last_seq = None
+            self._last_pose = None
             self._history.clear()
+            self._trajectory.clear()
             self._labels.clear()
             self._capture_mode = None
             self._capture_windows = []
@@ -261,6 +271,9 @@ class ElectroAnalyzer:
             self._state["pending_baseline_ready"] = False
             self._state["pending_baseline_feature_mv"] = None
             self._state["history"] = []
+            self._state["position"] = None
+            self._state["trajectory"] = []
+            self._state["trajectory_enabled"] = False
             self._state["label_count"] = 0
 
     def add_label(self, distance_cm: float, note: str = "") -> Dict[str, object]:
@@ -307,8 +320,10 @@ class ElectroAnalyzer:
         with self._lock:
             self._compute_enabled = bool(enabled)
             self._state["compute_enabled"] = self._compute_enabled
+            self._state["trajectory_enabled"] = bool(self._compute_enabled and self._state.get("position"))
             if not self._compute_enabled:
                 self._state["ready"] = self._baseline_feature_mv is not None
+                self._state["trajectory_enabled"] = False
         return self.get_state()
 
     def start_null_capture(self, seconds: float = 8.0) -> Dict[str, object]:
@@ -383,6 +398,8 @@ class ElectroAnalyzer:
             else:
                 state["baseline_channel_amp_mv"] = None
             state["history"] = list(self._history)
+            state["trajectory"] = list(self._trajectory)
+            state["trajectory_enabled"] = bool(self._compute_enabled and self._state.get("position"))
             state["label_count"] = len(self._labels)
             return state
 
@@ -410,10 +427,21 @@ class ElectroAnalyzer:
             sample_ts = time.time()
         seq = int(match.group("seq"))
         counts = [int(match.group(f"ch{i}")) for i in range(8)]
+        pose = None
+        if match.group("pos_valid") == "1":
+            pose = {
+                "id": int(match.group("pos_id")),
+                "x": int(match.group("pos_x")),
+                "y": int(match.group("pos_y")),
+                "z": int(match.group("pos_z")),
+                "valid": True,
+                "pseq": int(match.group("pos_seq")),
+            }
         return {
             "seq": seq,
             "ts": sample_ts,
             "counts": counts,
+            "pose": pose,
         }
 
     def ingest_history(self, entries: Sequence[Dict[str, object]]) -> None:
@@ -427,6 +455,8 @@ class ElectroAnalyzer:
                 self._sample_buffer.clear()
                 self._samples_since_compute = 0
             self._last_seq = seq
+            if sample.get("pose") is not None:
+                self._last_pose = sample["pose"]
             self._sample_buffer.append(sample)
             self._samples_since_compute += 1
             should_compute = self._compute_enabled or self._capture_mode is not None
@@ -498,6 +528,7 @@ class ElectroAnalyzer:
             return
 
         with self._lock:
+            pose = window[-1].get("pose") or self._last_pose
             if self._capture_mode is not None:
                 self._capture_windows.append(feats["channel_amp_mv"])
                 captured = len(self._capture_windows)
@@ -526,6 +557,25 @@ class ElectroAnalyzer:
                 "last_seq": window[-1]["seq"],
                 "seq_range": [window[0]["seq"], window[-1]["seq"]],
             })
+            if pose is not None:
+                position = {
+                    "id": pose.get("id"),
+                    "x": pose.get("x"),
+                    "y": pose.get("y"),
+                    "z": pose.get("z"),
+                    "pseq": pose.get("pseq"),
+                    "valid": bool(pose.get("valid")),
+                    "ts": window[-1]["ts"],
+                    "seq": window[-1]["seq"],
+                }
+                self._state["position"] = position
+                if self._compute_enabled and self._capture_mode is None and position["valid"]:
+                    if not self._trajectory or self._trajectory[-1].get("pseq") != position["pseq"]:
+                        self._trajectory.append(position)
+                self._state["trajectory"] = list(self._trajectory)
+                self._state["trajectory_enabled"] = bool(self._compute_enabled and position["valid"])
+            else:
+                self._state["trajectory_enabled"] = False
             self._append_history(dict(self._state))
 
     def _loop(self) -> None:

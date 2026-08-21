@@ -39,9 +39,18 @@
     .log-line.is-error .log-text { color: #fda4af; }
     .log-idx { color: #94a3b8; display: inline-block; width: 54px; text-align: right; margin-right: 8px; user-select: none; }
     .log-ts { color: #38bdf8; margin-right: 8px; user-select: none; }
-    .bar-row { display: grid; grid-template-columns: 44px 1fr 74px 78px; gap: 8px; align-items: center; margin-bottom: 8px; font-size: 12px; }
-    .bar-name { font-weight: 700; color: #344054; }
-    .bar-value, .bar-delta { font-family: monospace; color: #475467; text-align: right; }
+    .channel-vertical { display: grid; grid-template-columns: repeat(8, minmax(38px, 1fr)); gap: 10px; align-items: end; min-height: 210px; }
+    .channel-col { display: grid; grid-template-rows: 22px 140px 18px 18px; gap: 4px; justify-items: center; min-width: 0; font-size: 11px; }
+    .channel-name { font-weight: 700; color: #344054; }
+    .channel-track { width: 18px; height: 140px; border-radius: 5px; background: #e5e7eb; display: flex; align-items: flex-end; overflow: hidden; }
+    .channel-fill { width: 100%; min-height: 2px; border-radius: 5px 5px 0 0; transition: height .15s ease; }
+    .channel-value, .channel-delta { font-family: monospace; color: #475467; text-align: center; white-space: nowrap; }
+    .trajectory-wrap { border: 1px solid #dbe2ea; border-radius: 6px; background: #ffffff; height: 260px; position: relative; }
+    .trajectory-svg { width: 100%; height: 100%; display: block; }
+    .trajectory-grid { stroke: #eef2f7; stroke-width: 1; }
+    .trajectory-path { fill: none; stroke: #2563eb; stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
+    .trajectory-dot { fill: #dc2626; stroke: #ffffff; stroke-width: 2; }
+    .trajectory-empty { height: 120px; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:12px; }
     .small-note { font-size: 11px; color: #667085; line-height: 1.5; }
     @media (max-width: 959px) { .terminal { height: 360px; } }
 </style>
@@ -167,11 +176,37 @@
                 </v-row>
 
                 <div class="section-title">Channel amplitudes</div>
-                <div v-for="(amp, i) in channelAmps" :key="i" class="bar-row">
-                    <div class="bar-name">CH{{ i }}</div>
-                    <v-progress-linear :value="channelPct(i)" height="8" rounded :color="i >= 4 ? 'indigo' : 'blue-grey lighten-1'"></v-progress-linear>
-                    <div class="bar-value">{{ f2(amp) }} mV</div>
-                    <div class="bar-delta">{{ f2(channelDelta(i)) }} delta</div>
+                <div class="channel-vertical">
+                    <div v-for="(amp, i) in channelAmps" :key="i" class="channel-col">
+                        <div class="channel-name">CH{{ i }}</div>
+                        <div class="channel-track">
+                            <div class="channel-fill" :style="{ height: channelPct(i) + '%', background: i >= 4 ? '#4f46e5' : '#64748b' }"></div>
+                        </div>
+                        <div class="channel-value">{{ f2(amp) }}</div>
+                        <div class="channel-delta">{{ signedF2(channelDelta(i)) }}</div>
+                    </div>
+                </div>
+
+                <v-divider class="my-3"></v-divider>
+
+                <div class="d-flex align-center justify-space-between flex-wrap mb-2">
+                    <div>
+                        <div class="section-title mb-1">UWB trajectory</div>
+                        <div class="subtle" v-if="trajectoryVisible">ID {{ trajectoryLast.id }} X {{ trajectoryLast.x }} Y {{ trajectoryLast.y }} Z {{ trajectoryLast.z }}</div>
+                        <div class="subtle" v-else>Shown only while FFT computation is running and valid position data is available.</div>
+                    </div>
+                    <v-btn small text :disabled="trajectory.length === 0" @click="clearTrajectoryLocal"><v-icon left small>mdi-map-marker-remove</v-icon>clear view</v-btn>
+                </div>
+                <div v-if="trajectoryVisible" class="trajectory-wrap">
+                    <svg class="trajectory-svg" viewBox="0 0 320 220" preserveAspectRatio="none">
+                        <line v-for="x in [40,100,160,220,280]" :key="'gx'+x" :x1="x" y1="16" :x2="x" y2="204" class="trajectory-grid"></line>
+                        <line v-for="y in [40,85,130,175]" :key="'gy'+y" x1="24" :y1="y" x2="296" :y2="y" class="trajectory-grid"></line>
+                        <polyline v-if="trajectoryPolyline" :points="trajectoryPolyline" class="trajectory-path"></polyline>
+                        <circle v-if="trajectoryLastPoint" :cx="trajectoryLastPoint.x" :cy="trajectoryLastPoint.y" r="5" class="trajectory-dot"></circle>
+                    </svg>
+                </div>
+                <div v-else class="trajectory-empty">
+                    trajectory hidden
                 </div>
 
                 <div class="small-note mt-2">
@@ -271,6 +306,7 @@ new Vue({
             labelDistanceCm: null,
             labelNote: '',
             lineCap: 1200,
+            trajectoryClearBeforePseq: null,
             _lineBusy: false,
             snack: { show: false, text: '', color: 'success' },
         }
@@ -284,6 +320,47 @@ new Vue({
             const src = this.lines.slice(-this.lineCap)
             if (!q) return src
             return src.filter(l => (l.raw || '').toLowerCase().includes(q))
+        },
+        trajectory() {
+            const rows = Array.isArray(this.telem.trajectory) ? this.telem.trajectory : []
+            const cutoff = this.trajectoryClearBeforePseq
+            const filtered = cutoff == null ? rows : rows.filter(p => Number(p.pseq) > Number(cutoff))
+            return filtered.filter(p => p && p.valid && Number.isFinite(Number(p.x)) && Number.isFinite(Number(p.y)))
+        },
+        trajectoryVisible() {
+            return !!this.telem.compute_enabled && !!this.telem.trajectory_enabled && this.trajectory.length > 0
+        },
+        trajectoryLast() {
+            return this.trajectory.length ? this.trajectory[this.trajectory.length - 1] : { id: '--', x: '--', y: '--', z: '--' }
+        },
+        trajectoryScale() {
+            const pts = this.trajectory
+            if (!pts.length) return { minX: -1, maxX: 1, minY: -1, maxY: 1 }
+            let minX = Math.min(...pts.map(p => Number(p.x)))
+            let maxX = Math.max(...pts.map(p => Number(p.x)))
+            let minY = Math.min(...pts.map(p => Number(p.y)))
+            let maxY = Math.max(...pts.map(p => Number(p.y)))
+            const padX = Math.max(20, (maxX - minX) * 0.15)
+            const padY = Math.max(20, (maxY - minY) * 0.15)
+            if (minX === maxX) { minX -= 20; maxX += 20 } else { minX -= padX; maxX += padX }
+            if (minY === maxY) { minY -= 20; maxY += 20 } else { minY -= padY; maxY += padY }
+            return { minX, maxX, minY, maxY }
+        },
+        trajectoryScreenPoints() {
+            const s = this.trajectoryScale
+            const w = 272
+            const h = 188
+            return this.trajectory.map(p => {
+                const nx = (Number(p.x) - s.minX) / Math.max(1e-6, s.maxX - s.minX)
+                const ny = (Number(p.y) - s.minY) / Math.max(1e-6, s.maxY - s.minY)
+                return { x: 24 + nx * w, y: 204 - ny * h }
+            })
+        },
+        trajectoryPolyline() {
+            return this.trajectoryScreenPoints.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
+        },
+        trajectoryLastPoint() {
+            return this.trajectoryScreenPoints.length ? this.trajectoryScreenPoints[this.trajectoryScreenPoints.length - 1] : null
         },
         canAddLabel() {
             return this.labelDistanceCm !== null && this.labelDistanceCm !== '' && this.telem.channel_amp_mv && this.telem.channel_amp_mv[0] != null
@@ -456,6 +533,13 @@ new Vue({
             const arr = this.telem.channel_delta_mv || []
             return arr[i] != null ? arr[i] : 0
         },
+        clearTrajectoryLocal() {
+            const rows = Array.isArray(this.telem.trajectory) ? this.telem.trajectory : []
+            if (!rows.length) return
+            const last = rows[rows.length - 1]
+            this.trajectoryClearBeforePseq = last && last.pseq != null ? Number(last.pseq) : null
+            this.toast('trajectory view cleared')
+        },
         channelPct(i) {
             const arr = this.telem.channel_amp_mv || []
             const vals = arr.filter(v => v != null).map(v => Number(v))
@@ -476,6 +560,11 @@ new Vue({
         },
         f2(v) { return v == null ? '--' : Number(v).toFixed(2) },
         f3(v) { return v == null ? '--' : Number(v).toFixed(3) },
+        signedF2(v) {
+            if (v == null) return '--'
+            const n = Number(v)
+            return `${n >= 0 ? '+' : ''}${n.toFixed(2)}`
+        },
         toast(text, color = 'success') {
             this.snack = { show: true, text, color }
         },
