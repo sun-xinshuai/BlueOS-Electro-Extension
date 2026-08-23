@@ -177,6 +177,6 @@ def clear_fft_logs():
 
 
 if __name__ == "__main__":
-    driver.start()
     analyzer.start()
+    driver.start()
     app.run(host="0.0.0.0", port=9001, threaded=True)

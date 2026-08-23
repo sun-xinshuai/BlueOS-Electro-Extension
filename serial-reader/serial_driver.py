@@ -33,6 +33,8 @@ class SerialDriver:
         self._thread: Optional[threading.Thread] = None
         self._lock = threading.Lock()
         self._history_lock = threading.Lock()
+        self._listener_lock = threading.Lock()
+        self._line_listeners = []
 
         self.history: deque = deque(maxlen=MAX_HISTORY)
         self.total_bytes: int = 0
@@ -47,6 +49,11 @@ class SerialDriver:
         self._thread = threading.Thread(target=self._reader_loop, daemon=True)
         self._thread.start()
         logger.info("Serial reader thread started")
+
+    def add_line_listener(self, callback):
+        with self._listener_lock:
+            if callback not in self._line_listeners:
+                self._line_listeners.append(callback)
 
     def get_status(self) -> dict:
         with self._history_lock:
@@ -221,3 +228,11 @@ class SerialDriver:
         }
         with self._history_lock:
             self.history.append(entry)
+
+        with self._listener_lock:
+            listeners = list(self._line_listeners)
+        for callback in listeners:
+            try:
+                callback(dict(entry))
+            except Exception as e:
+                logger.warning(f"Serial line listener failed: {e}")

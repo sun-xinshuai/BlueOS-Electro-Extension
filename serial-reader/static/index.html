@@ -313,7 +313,9 @@ new Vue({
             const rows = Array.isArray(this.telem.trajectory) ? this.telem.trajectory : []
             const cutoff = this.trajectoryClearBeforePseq
             const filtered = cutoff == null ? rows : rows.filter(p => Number(p.pseq) > Number(cutoff))
-            return filtered.filter(p => p && p.valid && Number.isFinite(Number(p.x)) && Number.isFinite(Number(p.y)))
+            return filtered
+                .filter(p => p && p.valid && Number.isFinite(Number(p.x)) && Number.isFinite(Number(p.y)))
+                .slice(-300)
         },
         trajectoryVisible() {
             return this.trajectory.length > 0
@@ -553,7 +555,7 @@ new Vue({
         this.pollElectro()
         this.fetchLines()
         setInterval(() => this.pollStatus(), 1000)
-        setInterval(() => this.pollElectro(), 80)
+        setInterval(() => this.pollElectro(), 50)
         setInterval(() => this.fetchLines(), 100)
         setInterval(() => this.loadPorts(), 10000)
         window.addEventListener('resize', () => this.scrollTerminal())

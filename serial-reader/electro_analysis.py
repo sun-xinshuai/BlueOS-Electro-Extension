@@ -123,6 +123,9 @@ class ElectroAnalyzer:
         self._stop = threading.Event()
         self._thread = None
         self._last_history_index = 0
+        self._push_ingest = False
+        self._pending_entries = deque(maxlen=5000)
+        self._pending_lock = threading.Lock()
         self._sample_buffer = deque(maxlen=max(self.window_size * 4, 400))
         self._samples_since_compute = 0
         self._last_seq = None
@@ -209,6 +212,11 @@ class ElectroAnalyzer:
         }
 
     def start(self) -> None:
+        add_listener = getattr(self.driver, "add_line_listener", None)
+        if callable(add_listener):
+            add_listener(self.ingest_entry)
+            self._push_ingest = True
+            self._last_history_index = getattr(self.driver, "total_lines", 0)
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
 
@@ -492,6 +500,18 @@ class ElectroAnalyzer:
                 self._state["trajectory_enabled"] = False
             self._state["trajectory"] = list(self._trajectory)
 
+    def ingest_entry(self, entry: Dict[str, object]) -> None:
+        with self._pending_lock:
+            self._pending_entries.append(entry)
+
+    def _drain_pending_entries(self) -> List[Dict[str, object]]:
+        with self._pending_lock:
+            if not self._pending_entries:
+                return []
+            entries = list(self._pending_entries)
+            self._pending_entries.clear()
+            return entries
+
     def ingest_history(self, entries: Sequence[Dict[str, object]]) -> None:
         def append_sample(sample: Dict[str, object]) -> None:
             if sample.get("pose") is not None:
@@ -709,13 +729,18 @@ class ElectroAnalyzer:
             self._append_history(dict(self._state))
 
     def _loop(self) -> None:
-        self._last_history_index = getattr(self.driver, "total_lines", 0)
+        if not self._push_ingest:
+            self._last_history_index = getattr(self.driver, "total_lines", 0)
         while not self._stop.is_set():
             try:
-                entries = self.driver.get_history_since(self._last_history_index, limit=2000)
+                if self._push_ingest:
+                    entries = self._drain_pending_entries()
+                else:
+                    entries = self.driver.get_history_since(self._last_history_index, limit=2000)
+                    if entries:
+                        self._last_history_index = int(entries[-1]["index"])
                 if entries:
-                    self._last_history_index = int(entries[-1]["index"])
                     self.ingest_history(entries)
             except Exception:
                 pass
-            time.sleep(0.02)
+            time.sleep(0.005 if self._push_ingest else 0.02)
