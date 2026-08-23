@@ -1,6 +1,6 @@
 <html>
 <head>
-    <title>Active Electro FFT Labeling</title>
+    <title>Active Electro FFT</title>
     <link href="/static/css/materialdesignicons.min.css" rel="stylesheet">
     <link href="/static/css/vuetify.min.css" rel="stylesheet">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
@@ -59,7 +59,7 @@
 <v-main>
 <v-container fluid>
 
-    <h1>Active Electro FFT Labeling</h1>
+    <h1>Active Electro FFT</h1>
 
     <v-card outlined class="pa-3 mb-3">
         <div class="status-strip">
@@ -88,11 +88,12 @@
                 <span>{{ telem.compute_enabled ? 'FFT running' : 'FFT stopped' }}</span>
             </div>
             <div class="status-item">history {{ status.history_size || 0 }}</div>
-            <div class="status-item">labels {{ telem.label_count || 0 }}</div>
             <div class="status-item">rx {{ fmtAge(status.last_rx_age) }}</div>
             <div class="status-item">sample {{ telem.sample_rate_hz || 100 }} Hz</div>
             <div class="status-item">target {{ telem.target_hz || 20 }} Hz</div>
             <div class="status-item">cond {{ telem.conductivity_uS_cm || 800 }} uS/cm</div>
+            <div class="status-item">win {{ telem.window_received_samples || 0 }}/{{ telem.window_filled_samples || 0 }} rx/fill</div>
+            <div class="status-item">seq gaps {{ telem.seq_gap_count || 0 }}</div>
         </div>
     </v-card>
 
@@ -101,8 +102,8 @@
             <v-card outlined class="pa-3">
                 <div class="d-flex align-center justify-space-between flex-wrap mb-2">
                     <div>
-                        <div class="section-title mb-1">FFT baseline and labels</div>
-                        <div class="subtle">Capture null baseline, run FFT, then label each stable measurement with actual distance.</div>
+                        <div class="section-title mb-1">FFT baseline and trajectory</div>
+                        <div class="subtle">Capture null baseline, run FFT, then view the current trajectory while computation is enabled.</div>
                     </div>
                     <div class="d-flex align-center" style="gap:8px;flex-wrap:wrap">
                         <v-btn small color="primary" :disabled="telem.capturing_null" @click="startNull"><v-icon left small>mdi-record-circle</v-icon>start null</v-btn>
@@ -152,29 +153,9 @@
                         <div class="metric-num" style="font-size:22px;color:#0f766e">{{ telem.null_windows_collected || 0 }}</div>
                         <div class="metric-lbl">null windows</div>
                     </v-col>
-                    <v-col cols="6" sm="3" class="metric">
-                        <div class="metric-num" style="font-size:22px;color:#0369a1">{{ telem.label_count || 0 }}</div>
-                        <div class="metric-lbl">saved labels</div>
-                    </v-col>
                 </v-row>
 
                 <v-divider class="my-3"></v-divider>
-
-                <div class="section-title">Manual label</div>
-                <v-row dense class="mb-2">
-                    <v-col cols="12" sm="4">
-                        <v-text-field v-model.number="labelDistanceCm" type="number" label="right boundary distance cm" dense outlined hide-details></v-text-field>
-                    </v-col>
-                    <v-col cols="12" sm="4">
-                        <v-text-field v-model="labelNote" label="note" dense outlined hide-details clearable></v-text-field>
-                    </v-col>
-                    <v-col cols="12" sm="4" class="d-flex align-center" style="gap:8px">
-                        <v-btn small color="primary" :disabled="!canAddLabel" @click="addLabel"><v-icon left small>mdi-tag-plus</v-icon>add label</v-btn>
-                        <v-btn small text @click="exportLabels"><v-icon left small>mdi-download</v-icon>labels</v-btn>
-                        <v-btn small text color="error" @click="clearLabels"><v-icon left small>mdi-delete</v-icon>clear</v-btn>
-                    </v-col>
-                </v-row>
-
                 <div class="section-title">Channel amplitudes</div>
                 <div class="channel-vertical">
                     <div v-for="(amp, i) in channelAmps" :key="i" class="channel-col">
@@ -191,7 +172,7 @@
 
                 <div class="d-flex align-center justify-space-between flex-wrap mb-2">
                     <div>
-                        <div class="section-title mb-1">UWB trajectory</div>
+                        <div class="section-title mb-1">ELectro Trajectory</div>
                         <div class="subtle" v-if="trajectoryVisible">ID {{ trajectoryLast.id }} X {{ trajectoryLast.x }} Y {{ trajectoryLast.y }} Z {{ trajectoryLast.z }}</div>
                         <div class="subtle" v-else>Shown only while FFT computation is running and valid position data is available.</div>
                     </div>
@@ -210,7 +191,7 @@
                 </div>
 
                 <div class="small-note mt-2">
-                    The feature is retained for later fitting, but this page no longer estimates boundary distance.
+                    The trajectory view only follows valid position data while FFT computation is enabled.
                 </div>
             </v-card>
         </v-col>
@@ -303,8 +284,6 @@ new Vue({
             filterText: '',
             autoScroll: true,
             showTs: true,
-            labelDistanceCm: null,
-            labelNote: '',
             lineCap: 1200,
             trajectoryClearBeforePseq: null,
             _lineBusy: false,
@@ -362,9 +341,6 @@ new Vue({
         trajectoryLastPoint() {
             return this.trajectoryScreenPoints.length ? this.trajectoryScreenPoints[this.trajectoryScreenPoints.length - 1] : null
         },
-        canAddLabel() {
-            return this.labelDistanceCm !== null && this.labelDistanceCm !== '' && this.telem.channel_amp_mv && this.telem.channel_amp_mv[0] != null
-        },
         alertType() {
             if (this.telem.capturing_null) return 'info'
             if (this.telem.pending_baseline_ready) return 'success'
@@ -380,7 +356,7 @@ new Vue({
             }
             if (!this.telem.baseline_ready) return 'No saved baseline. Capture null, stop null, then save baseline.'
             if (!this.telem.compute_enabled) return 'Baseline is ready. Click start FFT to update channel amplitudes.'
-            return 'FFT is running. Enter the measured boundary distance and add labels when the reading is stable.'
+            return 'FFT is running. The trajectory is shown when valid position data is available.'
         },
     },
     methods: {
@@ -461,61 +437,6 @@ new Vue({
                 this.telem = r.data || this.telem
                 this.toast(next ? 'FFT started' : 'FFT stopped')
             }).catch(() => this.toast('compute switch failed', 'error'))
-        },
-        addLabel() {
-            const params = new URLSearchParams()
-            params.set('distance_cm', String(this.labelDistanceCm))
-            params.set('note', this.labelNote || '')
-            axios.get(`/add_label?${params.toString()}`, { timeout: 5000 }).then(r => {
-                if (!r.data || !r.data.ok) {
-                    this.toast((r.data && r.data.error) || 'label failed', 'warning')
-                    return
-                }
-                this.telem.label_count = r.data.label_count
-                this.toast(`label saved: ${this.labelDistanceCm} cm`)
-            }).catch(() => this.toast('label failed', 'error'))
-        },
-        exportLabels() {
-            axios.get('/export_labels', { timeout: 10000 }).then(r => {
-                const rows = r.data || []
-                if (!rows.length) {
-                    this.toast('no labels to export', 'warning')
-                    return
-                }
-                const header = [
-                    'created_at','distance_cm','note','target_hz','sample_rate_hz','window_size',
-                    'seq_start','seq_end','peak_freq_hz','peak_amp_mv','target_amp_mv',
-                    'raw_feature_mv','delta_feature_mv','baseline_feature_mv',
-                    'ch0_mv','ch1_mv','ch2_mv','ch3_mv','ch4_mv','ch5_mv','ch6_mv','ch7_mv',
-                    'dch0_mv','dch1_mv','dch2_mv','dch3_mv','dch4_mv','dch5_mv','dch6_mv','dch7_mv'
-                ]
-                const esc = v => {
-                    if (v == null) return ''
-                    const s = String(v)
-                    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
-                }
-                const body = rows.map(row => {
-                    const seq = row.seq_range || []
-                    const ch = row.channel_amp_mv || []
-                    const dch = row.channel_delta_mv || []
-                    return [
-                        row.created_at, row.distance_cm, row.note, row.target_hz, row.sample_rate_hz, row.window_size,
-                        seq[0], seq[1], row.peak_freq_hz, row.peak_amp_mv, row.target_amp_mv,
-                        row.raw_feature_mv, row.delta_feature_mv, row.baseline_feature_mv,
-                        ch[0], ch[1], ch[2], ch[3], ch[4], ch[5], ch[6], ch[7],
-                        dch[0], dch[1], dch[2], dch[3], dch[4], dch[5], dch[6], dch[7]
-                    ].map(esc).join(',')
-                }).join('\n')
-                this._download(`${header.join(',')}\n${body}`, `electro_labels_${now()}.csv`, 'text/csv')
-                this._download(JSON.stringify(rows, null, 2), `electro_labels_${now()}.json`, 'application/json')
-                this.toast(`exported ${rows.length} labels`)
-            }).catch(() => this.toast('label export failed', 'error'))
-        },
-        clearLabels() {
-            axios.get('/clear_labels').then(r => {
-                this.telem.label_count = (r.data && r.data.label_count) || 0
-                this.toast('labels cleared')
-            }).catch(() => this.toast('clear labels failed', 'error'))
         },
         clearBaseline() {
             axios.get('/clear_baseline').then(() => {

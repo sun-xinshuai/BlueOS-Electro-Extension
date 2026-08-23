@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""BlueOS serial reader focused on active electro FFT and labeling."""
+"""BlueOS serial reader focused on active electro FFT and trajectory display."""
 
 from __future__ import annotations
 
@@ -66,15 +66,6 @@ class API:
     def set_compute_enabled(self, enabled):
         return self.analyzer.set_compute_enabled(enabled)
 
-    def add_label(self, distance_cm, note=""):
-        return self.analyzer.add_label(distance_cm, note)
-
-    def export_labels(self):
-        return self.analyzer.export_labels()
-
-    def clear_labels(self):
-        return self.analyzer.clear_labels()
-
     def clear_baseline(self):
         self.analyzer.clear_baseline()
         return True
@@ -110,7 +101,7 @@ def root():
 
 @app.route("/health")
 def health():
-    return json.dumps({"ok": True, "service": "serial-reader", "mode": "fft-labeling"})
+    return json.dumps({"ok": True, "service": "serial-reader", "mode": "fft-trajectory"})
 
 
 @app.route("/get_status")
@@ -186,26 +177,6 @@ def set_compute(enable):
     if enable in ["true", "false"]:
         return json.dumps(api.set_compute_enabled(enable == "true"))
     return json.dumps(False)
-
-
-@app.route("/add_label")
-def add_label():
-    try:
-        distance_cm = float(flask_request.args.get("distance_cm", ""))
-    except Exception:
-        return json.dumps({"ok": False, "error": "distance_cm is required"})
-    note = flask_request.args.get("note", "")
-    return json.dumps(api.add_label(distance_cm, note))
-
-
-@app.route("/export_labels")
-def export_labels():
-    return json.dumps(api.export_labels())
-
-
-@app.route("/clear_labels")
-def clear_labels():
-    return json.dumps(api.clear_labels())
 
 
 @app.route("/clear_baseline")

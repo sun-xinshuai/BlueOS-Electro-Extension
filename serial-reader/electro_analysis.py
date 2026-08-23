@@ -3,7 +3,7 @@
 
 The analyzer keeps a fixed-size 1 s window at 100 Hz, extracts the 20 Hz
 response with a narrow-band FFT-like estimator, and supports a captured null
-baseline plus manual labels for later model fitting.
+baseline plus trajectory display.
 """
 
 from __future__ import annotations
@@ -114,6 +114,7 @@ class ElectroAnalyzer:
         self.step_size = int(step_size)
         self.adc_full_scale_mv = float(adc_full_scale_mv)
         self.conductivity_uS_cm = float(conductivity_uS_cm)
+        self.max_gap_fill = 20
 
         self.ref_idx = [0, 1, 2, 3, 6, 7]
         self.right_idx = [4, 5]
@@ -126,11 +127,12 @@ class ElectroAnalyzer:
         self._samples_since_compute = 0
         self._last_seq = None
         self._last_pose = None
+        self._seq_gap_count = 0
+        self._seq_filled_count = 0
+        self._seq_reset_count = 0
 
         self._history = deque(maxlen=240)
         self._trajectory = deque(maxlen=600)
-        self._labels = deque(maxlen=1024)
-
         self._baseline_channels_mv = None
         self._baseline_feature_mv = None
         self._baseline_saved_at = None
@@ -192,9 +194,13 @@ class ElectroAnalyzer:
             "position": None,
             "trajectory": [],
             "trajectory_enabled": False,
-            "label_count": 0,
             "last_seq": None,
             "seq_range": None,
+            "seq_gap_count": 0,
+            "seq_filled_count": 0,
+            "seq_reset_count": 0,
+            "window_received_samples": 0,
+            "window_filled_samples": 0,
             "window_timestamp": None,
         }
 
@@ -257,9 +263,11 @@ class ElectroAnalyzer:
             self._samples_since_compute = 0
             self._last_seq = None
             self._last_pose = None
+            self._seq_gap_count = 0
+            self._seq_filled_count = 0
+            self._seq_reset_count = 0
             self._history.clear()
             self._trajectory.clear()
-            self._labels.clear()
             self._capture_mode = None
             self._capture_windows = []
             self._pending_baseline_channels_mv = None
@@ -274,47 +282,11 @@ class ElectroAnalyzer:
             self._state["position"] = None
             self._state["trajectory"] = []
             self._state["trajectory_enabled"] = False
-            self._state["label_count"] = 0
-
-    def add_label(self, distance_cm: float, note: str = "") -> Dict[str, object]:
-        with self._lock:
-            channel_amp = self._state.get("channel_amp_mv")
-            if not channel_amp or channel_amp[0] is None:
-                return {"ok": False, "error": "FFT state is not ready", "label_count": len(self._labels)}
-            label = {
-                "id": len(self._labels) + 1,
-                "created_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
-                "ts": time.time(),
-                "distance_cm": float(distance_cm),
-                "note": str(note or ""),
-                "sample_rate_hz": self.sample_rate_hz,
-                "target_hz": self.target_hz,
-                "window_size": self.window_size,
-                "seq_range": self._state.get("seq_range"),
-                "last_seq": self._state.get("last_seq"),
-                "peak_freq_hz": self._state.get("peak_freq_hz"),
-                "peak_amp_mv": self._state.get("peak_amp_mv"),
-                "target_amp_mv": self._state.get("target_amp_mv"),
-                "raw_feature_mv": self._state.get("raw_feature_mv"),
-                "delta_feature_mv": self._state.get("delta_feature_mv"),
-                "channel_amp_mv": list(channel_amp),
-                "channel_delta_mv": list(self._state.get("channel_delta_mv") or []),
-                "baseline_feature_mv": self._baseline_feature_mv,
-                "baseline_saved_at": self._baseline_saved_at,
-            }
-            self._labels.append(label)
-            self._state["label_count"] = len(self._labels)
-            return {"ok": True, "label": label, "label_count": len(self._labels)}
-
-    def clear_labels(self) -> Dict[str, object]:
-        with self._lock:
-            self._labels.clear()
-            self._state["label_count"] = 0
-            return {"ok": True, "label_count": 0}
-
-    def export_labels(self) -> List[Dict[str, object]]:
-        with self._lock:
-            return list(self._labels)
+            self._state["seq_gap_count"] = 0
+            self._state["seq_filled_count"] = 0
+            self._state["seq_reset_count"] = 0
+            self._state["window_received_samples"] = 0
+            self._state["window_filled_samples"] = 0
 
     def set_compute_enabled(self, enabled: bool) -> Dict[str, object]:
         with self._lock:
@@ -400,7 +372,6 @@ class ElectroAnalyzer:
             state["history"] = list(self._history)
             state["trajectory"] = list(self._trajectory)
             state["trajectory_enabled"] = bool(self._compute_enabled and self._state.get("position"))
-            state["label_count"] = len(self._labels)
             return state
 
     def _append_history(self, snapshot: Dict[str, object]) -> None:
@@ -442,19 +413,13 @@ class ElectroAnalyzer:
             "ts": sample_ts,
             "counts": counts,
             "pose": pose,
+            "filled": False,
+            "drop": int(match.group("drop")),
+            "overrun": int(match.group("overrun")),
         }
 
     def ingest_history(self, entries: Sequence[Dict[str, object]]) -> None:
-        for entry in entries:
-            raw = entry.get("raw", "")
-            sample = self._parse_sample(raw)
-            if sample is None:
-                continue
-            seq = sample["seq"]
-            if self._last_seq is not None and seq != self._last_seq + 1:
-                self._sample_buffer.clear()
-                self._samples_since_compute = 0
-            self._last_seq = seq
+        def append_sample(sample: Dict[str, object]) -> None:
             if sample.get("pose") is not None:
                 self._last_pose = sample["pose"]
             self._sample_buffer.append(sample)
@@ -463,6 +428,49 @@ class ElectroAnalyzer:
             if should_compute and len(self._sample_buffer) >= self.window_size and self._samples_since_compute >= self.step_size:
                 self._samples_since_compute = 0
                 self._compute_state()
+
+        for entry in entries:
+            raw = entry.get("raw", "")
+            sample = self._parse_sample(raw)
+            if sample is None:
+                continue
+            seq = sample["seq"]
+            if self._last_seq is not None:
+                gap = seq - self._last_seq
+                if gap <= 0:
+                    continue
+                if gap > 1:
+                    self._seq_gap_count += 1
+                    missing_count = gap - 1
+                    if missing_count <= self.max_gap_fill and self._sample_buffer:
+                        prev = self._sample_buffer[-1]
+                        prev_counts = prev["counts"]
+                        prev_ts = float(prev.get("ts", sample["ts"]))
+                        sample_ts = float(sample["ts"])
+                        dt = (sample_ts - prev_ts) / float(gap) if sample_ts >= prev_ts else 1.0 / self.sample_rate_hz
+                        for missing in range(1, gap):
+                            ratio = missing / float(gap)
+                            filled_counts = [
+                                int(round(float(prev_counts[ch]) + (float(sample["counts"][ch]) - float(prev_counts[ch])) * ratio))
+                                for ch in range(8)
+                            ]
+                            filled_sample = {
+                                "seq": self._last_seq + missing,
+                                "ts": prev_ts + dt * missing,
+                                "counts": filled_counts,
+                                "pose": self._last_pose,
+                                "filled": True,
+                                "drop": sample.get("drop"),
+                                "overrun": sample.get("overrun"),
+                            }
+                            self._seq_filled_count += 1
+                            append_sample(filled_sample)
+                    else:
+                        self._sample_buffer.clear()
+                        self._samples_since_compute = 0
+                        self._seq_reset_count += 1
+            self._last_seq = seq
+            append_sample(sample)
 
     def _compute_channel_amplitudes(self, window_mv: Sequence[Sequence[float]]) -> Dict[str, object]:
         n = len(window_mv)
@@ -526,6 +534,8 @@ class ElectroAnalyzer:
         feats = self._compute_channel_amplitudes(window_mv)
         if not feats:
             return
+        filled_samples = sum(1 for row in window if row.get("filled"))
+        received_samples = len(window) - filled_samples
 
         with self._lock:
             pose = window[-1].get("pose") or self._last_pose
@@ -556,6 +566,11 @@ class ElectroAnalyzer:
                 "window_timestamp": window[-1]["ts"],
                 "last_seq": window[-1]["seq"],
                 "seq_range": [window[0]["seq"], window[-1]["seq"]],
+                "seq_gap_count": self._seq_gap_count,
+                "seq_filled_count": self._seq_filled_count,
+                "seq_reset_count": self._seq_reset_count,
+                "window_received_samples": received_samples,
+                "window_filled_samples": filled_samples,
             })
             if pose is not None:
                 position = {
