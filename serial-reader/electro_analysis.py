@@ -308,23 +308,29 @@ class ElectroAnalyzer:
 
     def set_compute_enabled(self, enabled: bool) -> Dict[str, object]:
         with self._lock:
-            was_running = self._compute_enabled or self._trajectory_recording
             is_running = bool(enabled)
             self._compute_enabled = is_running
-            self._trajectory_recording = is_running
             self._state["compute_enabled"] = self._compute_enabled
-            self._state["trajectory_recording"] = self._trajectory_recording
-            if is_running and not was_running:
-                self._trajectory.clear()
+            if is_running:
                 self._fft_logs.clear()
-                self._state["trajectory"] = []
-                self._state["position"] = None
                 self._state["fft_log_count"] = 0
-                self._state["trajectory_enabled"] = False
-            self._state["trajectory_enabled"] = bool(is_running and self._state.get("position"))
             if not is_running:
                 channel_amp = self._state.get("channel_amp_mv") or []
                 self._state["ready"] = bool(channel_amp and channel_amp[0] is not None)
+        return self.get_state()
+
+    def set_trajectory_enabled(self, enabled: bool) -> Dict[str, object]:
+        with self._lock:
+            was_recording = self._trajectory_recording
+            is_recording = bool(enabled)
+            self._trajectory_recording = is_recording
+            self._state["trajectory_recording"] = self._trajectory_recording
+            if is_recording and not was_recording:
+                self._trajectory.clear()
+                self._state["trajectory"] = []
+                self._state["position"] = None
+                self._state["trajectory_enabled"] = False
+            if not is_recording:
                 self._state["trajectory_enabled"] = False
         return self.get_state()
 

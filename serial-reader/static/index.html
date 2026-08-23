@@ -77,7 +77,11 @@
             </div>
             <div class="status-item">
                 <span class="dot" :class="telem.compute_enabled ? 'dot-green' : 'dot-yellow'"></span>
-                        <span>{{ telem.compute_enabled ? 'running' : 'stopped' }}</span>
+                        <span>FFT {{ telem.compute_enabled ? 'running' : 'stopped' }}</span>
+            </div>
+            <div class="status-item">
+                <span class="dot" :class="telem.trajectory_recording ? 'dot-green' : 'dot-yellow'"></span>
+                <span>UWB {{ telem.trajectory_recording ? 'recording' : 'stopped' }}</span>
             </div>
             <div class="status-item">history {{ status.history_size || 0 }}</div>
             <div class="status-item">rx {{ fmtAge(status.last_rx_age) }}</div>
@@ -96,11 +100,11 @@
                 <div class="d-flex align-center justify-space-between flex-wrap mb-2">
                     <div>
                         <div class="section-title mb-1">Electro Location</div>
-                        <div class="subtle">Start runs FFT logging and UWB trajectory recording together. Stop freezes both outputs.</div>
+                        <div class="subtle">FFT logging and UWB trajectory recording are controlled independently.</div>
                     </div>
                     <div class="d-flex align-center" style="gap:8px;flex-wrap:wrap">
                         <v-btn small :color="telem.compute_enabled ? 'error' : 'primary'" @click="toggleCompute">
-                            <v-icon left small>{{ telem.compute_enabled ? 'mdi-pause' : 'mdi-play' }}</v-icon>{{ telem.compute_enabled ? 'Stop' : 'Start' }}
+                            <v-icon left small>{{ telem.compute_enabled ? 'mdi-pause' : 'mdi-play' }}</v-icon>{{ telem.compute_enabled ? 'Stop FFT' : 'Start FFT' }}
                         </v-btn>
                         <div class="log-meter">
                             <div class="log-meter-head">
@@ -168,6 +172,9 @@
                         <div class="subtle" v-else>Shown after valid UWB position data is recorded.</div>
                     </div>
                     <div class="d-flex align-center" style="gap:8px;flex-wrap:wrap">
+                        <v-btn small :color="telem.trajectory_recording ? 'error' : 'primary'" @click="toggleTrajectory">
+                            <v-icon left small>{{ telem.trajectory_recording ? 'mdi-pause' : 'mdi-map-marker-path' }}</v-icon>{{ telem.trajectory_recording ? 'Stop UWB' : 'Start UWB' }}
+                        </v-btn>
                         <v-btn small text :disabled="trajectory.length === 0" @click="exportTrajectory"><v-icon left small>mdi-file-export</v-icon>trajectory</v-btn>
                         <v-btn small text :disabled="trajectory.length === 0" @click="clearTrajectoryLocal"><v-icon left small>mdi-map-marker-remove</v-icon>clear view</v-btn>
                     </div>
@@ -185,7 +192,7 @@
                 </div>
 
                 <div class="small-note mt-2">
-                    Start clears old FFT logs and UWB trajectory, then begins a new run. Stop retains the current results.
+                    Start UWB clears the old trajectory and begins a new track. Stop UWB retains the current track.
                 </div>
             </v-card>
         </v-col>
@@ -347,8 +354,8 @@ new Vue({
             return this.telem.ready ? 'warning' : 'info'
         },
         analysisStatusText() {
-            if (!this.telem.compute_enabled) return 'Click Start to run FFT logging and UWB trajectory recording.'
-            return 'Running. FFT logs and UWB trajectory are being recorded.'
+            if (this.telem.compute_enabled) return 'FFT logging is running.'
+            return 'FFT logging is stopped. UWB trajectory has its own control.'
         },
     },
     methods: {
@@ -466,14 +473,21 @@ new Vue({
         },
         toggleCompute() {
             const next = !this.telem.compute_enabled
+            axios.get(`/set_compute/${next}`).then(r => {
+                this.telem = r.data || this.telem
+                this.toast(next ? 'fft started' : 'fft stopped')
+            }).catch(() => this.toast('compute switch failed', 'error'))
+        },
+        toggleTrajectory() {
+            const next = !this.telem.trajectory_recording
             if (next) {
                 this.trajectoryClearBeforePseq = null
                 if (Array.isArray(this.telem.trajectory)) this.telem.trajectory = []
             }
-            axios.get(`/set_compute/${next}`).then(r => {
+            axios.get(`/set_trajectory/${next}`).then(r => {
                 this.telem = r.data || this.telem
-                this.toast(next ? 'started' : 'stopped')
-            }).catch(() => this.toast('compute switch failed', 'error'))
+                this.toast(next ? 'uwb trajectory started' : 'uwb trajectory stopped')
+            }).catch(() => this.toast('trajectory switch failed', 'error'))
         },
         clearFftLogs() {
             axios.get('/clear_fft_logs', { timeout: 5000 }).then(r => {

@@ -63,6 +63,9 @@ class API:
     def set_compute_enabled(self, enabled):
         return self.analyzer.set_compute_enabled(enabled)
 
+    def set_trajectory_enabled(self, enabled):
+        return self.analyzer.set_trajectory_enabled(enabled)
+
     def clear_fft_logs(self):
         return self.analyzer.clear_fft_logs()
 
@@ -168,6 +171,13 @@ def export_trajectory():
 def set_compute(enable):
     if enable in ["true", "false"]:
         return json.dumps(api.set_compute_enabled(enable == "true"))
+    return json.dumps(False)
+
+
+@app.route("/set_trajectory/<enable>")
+def set_trajectory(enable):
+    if enable in ["true", "false"]:
+        return json.dumps(api.set_trajectory_enabled(enable == "true"))
     return json.dumps(False)
 
 
