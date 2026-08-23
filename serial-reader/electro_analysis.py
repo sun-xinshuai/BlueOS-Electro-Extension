@@ -293,8 +293,13 @@ class ElectroAnalyzer:
 
     def set_compute_enabled(self, enabled: bool) -> Dict[str, object]:
         with self._lock:
+            was_enabled = self._compute_enabled
             self._compute_enabled = bool(enabled)
             self._state["compute_enabled"] = self._compute_enabled
+            if self._compute_enabled and not was_enabled:
+                self._trajectory.clear()
+                self._state["trajectory"] = []
+                self._state["trajectory_enabled"] = False
             self._state["trajectory_enabled"] = bool(self._compute_enabled and self._state.get("position"))
             if not self._compute_enabled:
                 channel_amp = self._state.get("channel_amp_mv") or []
