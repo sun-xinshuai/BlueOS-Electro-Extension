@@ -446,10 +446,35 @@ class ElectroAnalyzer:
             "overrun": int(match.group("overrun")),
         }
 
+    def _record_pose_sample(self, sample: Dict[str, object]) -> None:
+        pose = sample.get("pose")
+        if pose is None or not pose.get("valid") or sample.get("filled"):
+            return
+        position = {
+            "id": pose.get("id"),
+            "x": pose.get("x"),
+            "y": pose.get("y"),
+            "z": pose.get("z"),
+            "pseq": pose.get("pseq"),
+            "valid": True,
+            "ts": sample.get("ts"),
+            "seq": sample.get("seq"),
+        }
+        with self._lock:
+            self._state["position"] = position
+            if self._compute_enabled and self._capture_mode is None:
+                if not self._trajectory or self._trajectory[-1].get("pseq") != position["pseq"]:
+                    self._trajectory.append(position)
+                self._state["trajectory_enabled"] = True
+            else:
+                self._state["trajectory_enabled"] = False
+            self._state["trajectory"] = list(self._trajectory)
+
     def ingest_history(self, entries: Sequence[Dict[str, object]]) -> None:
         def append_sample(sample: Dict[str, object]) -> None:
             if sample.get("pose") is not None:
                 self._last_pose = sample["pose"]
+                self._record_pose_sample(sample)
             self._sample_buffer.append(sample)
             self._samples_since_compute += 1
             should_compute = self._compute_enabled or self._capture_mode is not None
@@ -632,9 +657,6 @@ class ElectroAnalyzer:
                     "seq": window[-1]["seq"],
                 }
                 self._state["position"] = position
-                if self._compute_enabled and self._capture_mode is None and position["valid"]:
-                    if not self._trajectory or self._trajectory[-1].get("pseq") != position["pseq"]:
-                        self._trajectory.append(position)
                 self._state["trajectory"] = list(self._trajectory)
                 self._state["trajectory_enabled"] = bool(self._compute_enabled and position["valid"])
             else:
