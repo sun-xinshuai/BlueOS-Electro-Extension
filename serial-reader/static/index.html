@@ -92,6 +92,7 @@
             <div class="status-item">sample {{ telem.sample_rate_hz || 100 }} Hz</div>
             <div class="status-item">target {{ telem.target_hz || 20 }} Hz</div>
             <div class="status-item">cond {{ telem.conductivity_uS_cm || 800 }} uS/cm</div>
+            <div class="status-item">fft {{ telem.fft_log_count || 0 }}</div>
             <div class="status-item">win {{ telem.window_received_samples || 0 }}/{{ telem.window_filled_samples || 0 }} rx/fill</div>
             <div class="status-item">seq gaps {{ telem.seq_gap_count || 0 }}</div>
         </div>
@@ -109,9 +110,10 @@
                         <v-btn small color="primary" :disabled="telem.capturing_null" @click="startNull"><v-icon left small>mdi-record-circle</v-icon>start null</v-btn>
                         <v-btn small color="warning" :disabled="!telem.capturing_null" @click="stopNull"><v-icon left small>mdi-stop-circle</v-icon>stop null</v-btn>
                         <v-btn small color="secondary" :disabled="!telem.pending_baseline_ready" @click="saveBaseline"><v-icon left small>mdi-content-save</v-icon>save baseline</v-btn>
-                        <v-btn small :color="telem.compute_enabled ? 'error' : 'primary'" :disabled="telem.capturing_null" @click="toggleCompute">
+                    <v-btn small :color="telem.compute_enabled ? 'error' : 'primary'" :disabled="telem.capturing_null" @click="toggleCompute">
                             <v-icon left small>{{ telem.compute_enabled ? 'mdi-pause' : 'mdi-play' }}</v-icon>{{ telem.compute_enabled ? 'stop FFT' : 'start FFT' }}
                         </v-btn>
+                        <v-btn small text @click="exportFftLogs"><v-icon left small>mdi-file-export</v-icon>fft logs</v-btn>
                         <v-btn small text @click="loadBaseline"><v-icon left small>mdi-restore</v-icon>reload</v-btn>
                         <v-btn small text color="error" @click="clearBaseline"><v-icon left small>mdi-delete-forever</v-icon>clear</v-btn>
                     </div>
@@ -153,6 +155,10 @@
                         <div class="metric-num" style="font-size:22px;color:#0f766e">{{ telem.null_windows_collected || 0 }}</div>
                         <div class="metric-lbl">null windows</div>
                     </v-col>
+                    <v-col cols="6" sm="3" class="metric">
+                        <div class="metric-num" style="font-size:22px;color:#0369a1">{{ telem.fft_log_count || 0 }}</div>
+                        <div class="metric-lbl">fft logs</div>
+                    </v-col>
                 </v-row>
 
                 <v-divider class="my-3"></v-divider>
@@ -161,10 +167,10 @@
                     <div v-for="(amp, i) in channelAmps" :key="i" class="channel-col">
                         <div class="channel-name">CH{{ i }}</div>
                         <div class="channel-track">
-                            <div class="channel-fill" :style="{ height: channelPct(i) + '%', background: i >= 4 ? '#4f46e5' : '#64748b' }"></div>
+                            <div class="channel-fill" :style="channelFillStyle(i)"></div>
                         </div>
                         <div class="channel-value">{{ f2(amp) }}</div>
-                        <div class="channel-delta">{{ signedF2(channelDelta(i)) }}</div>
+                        <div class="channel-delta">{{ signedF2(channelCenteredDelta(i)) }}</div>
                     </div>
                 </div>
 
@@ -294,6 +300,14 @@ new Vue({
         channelAmps() {
             return this.telem.channel_amp_mv || [null, null, null, null, null, null, null, null]
         },
+        channelStats() {
+            const vals = this.channelAmps.filter(v => v != null).map(v => Number(v))
+            if (!vals.length) return { min: 0, max: 1, mean: 0, range: 1 }
+            const min = Math.min(...vals)
+            const max = Math.max(...vals)
+            const mean = vals.reduce((a, b) => a + b, 0) / vals.length
+            return { min, max, mean, range: Math.max(1e-6, max - min) }
+        },
         filteredLines() {
             const q = (this.filterText || '').trim().toLowerCase()
             const src = this.lines.slice(-this.lineCap)
@@ -413,6 +427,43 @@ new Vue({
                 this.toast(`exported ${rows.length} lines`)
             }).catch(() => this.toast('export failed', 'error'))
         },
+        exportFftLogs() {
+            axios.get('/export_fft_logs?limit=6000', { timeout: 10000 }).then(r => {
+                const rows = r.data || []
+                if (!rows.length) {
+                    this.toast('no fft logs to export', 'warning')
+                    return
+                }
+                const header = [
+                    'created_at','ts','seq_start','seq_end','peak_freq_hz','peak_amp_mv','target_amp_mv',
+                    'raw_feature_mv','delta_feature_mv','window_rx','window_fill','seq_gaps','seq_filled','seq_resets',
+                    'mean_x','mean_y','mean_z','mean_count','pos_id','pos_x','pos_y','pos_z',
+                    'ch0_mv','ch1_mv','ch2_mv','ch3_mv','ch4_mv','ch5_mv','ch6_mv','ch7_mv'
+                ]
+                const esc = v => {
+                    if (v == null) return ''
+                    const s = String(v)
+                    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+                }
+                const body = rows.map(row => {
+                    const pos = row.position || {}
+                    const mean = row.window_mean_position || {}
+                    const ch = row.channel_amp_mv || []
+                    return [
+                        row.created_at, row.ts, row.seq_start, row.seq_end, row.peak_freq_hz, row.peak_amp_mv, row.target_amp_mv,
+                        row.raw_feature_mv, row.delta_feature_mv, row.window_received_samples, row.window_filled_samples,
+                        row.seq_gap_count, row.seq_filled_count, row.seq_reset_count,
+                        mean.x, mean.y, mean.z, mean.count,
+                        pos.id, pos.x, pos.y, pos.z,
+                        ch[0], ch[1], ch[2], ch[3], ch[4], ch[5], ch[6], ch[7]
+                    ].map(esc).join(',')
+                }).join('\n')
+                const stamp = now()
+                this._download(`${header.join(',')}\n${body}`, `fft_logs_${stamp}.csv`, 'text/csv')
+                this._download(JSON.stringify(rows, null, 2), `fft_logs_${stamp}.json`, 'application/json')
+                this.toast(`exported ${rows.length} fft logs`)
+            }).catch(() => this.toast('fft log export failed', 'error'))
+        },
         startNull() {
             axios.get('/capture_null').then(r => {
                 this.telem = r.data || this.telem
@@ -453,6 +504,28 @@ new Vue({
         channelDelta(i) {
             const arr = this.telem.channel_delta_mv || []
             return arr[i] != null ? arr[i] : 0
+        },
+        channelCenteredDelta(i) {
+            const amp = this.channelAmps[i]
+            if (amp == null) return 0
+            return Number(amp) - this.channelStats.mean
+        },
+        channelVisualPct(i) {
+            const amp = this.channelAmps[i]
+            if (amp == null) return 0
+            const s = this.channelStats
+            const norm = (Number(amp) - s.min) / s.range
+            const shaped = Math.pow(Math.max(0, Math.min(1, norm)), 0.55)
+            return 10 + shaped * 88
+        },
+        channelFillStyle(i) {
+            const amp = this.channelAmps[i]
+            const s = this.channelStats
+            const norm = amp == null ? 0 : (Number(amp) - s.min) / s.range
+            const shaped = Math.pow(Math.max(0, Math.min(1, norm)), 0.55)
+            const alpha = 0.35 + shaped * 0.65
+            const color = i >= 4 ? `rgba(79,70,229,${alpha})` : `rgba(100,116,139,${alpha})`
+            return { height: this.channelVisualPct(i) + '%', background: color }
         },
         clearTrajectoryLocal() {
             const rows = Array.isArray(this.telem.trajectory) ? this.telem.trajectory : []

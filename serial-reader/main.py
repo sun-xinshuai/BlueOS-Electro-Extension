@@ -54,6 +54,9 @@ class API:
     def get_electro_state(self):
         return self.analyzer.get_state()
 
+    def export_fft_logs(self, limit=6000):
+        return self.analyzer.export_fft_logs(limit)
+
     def capture_null(self, seconds=8.0):
         return self.analyzer.start_null_capture(seconds)
 
@@ -151,6 +154,15 @@ def list_ports():
 @app.route("/get_electro_state")
 def get_electro_state():
     return json.dumps(api.get_electro_state())
+
+
+@app.route("/export_fft_logs")
+def export_fft_logs():
+    try:
+        limit = int(flask_request.args.get("limit", 6000))
+    except Exception:
+        limit = 6000
+    return json.dumps(api.export_fft_logs(limit))
 
 
 @app.route("/capture_null")

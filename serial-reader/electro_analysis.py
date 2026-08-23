@@ -3,7 +3,7 @@
 
 The analyzer keeps a fixed-size 1 s window at 100 Hz, extracts the 20 Hz
 response with a narrow-band FFT-like estimator, and supports a captured null
-baseline plus trajectory display.
+baseline, trajectory display, and FFT snapshot logging.
 """
 
 from __future__ import annotations
@@ -133,6 +133,7 @@ class ElectroAnalyzer:
 
         self._history = deque(maxlen=240)
         self._trajectory = deque(maxlen=600)
+        self._fft_logs = deque(maxlen=6000)
         self._baseline_channels_mv = None
         self._baseline_feature_mv = None
         self._baseline_saved_at = None
@@ -194,6 +195,7 @@ class ElectroAnalyzer:
             "position": None,
             "trajectory": [],
             "trajectory_enabled": False,
+            "fft_log_count": 0,
             "last_seq": None,
             "seq_range": None,
             "seq_gap_count": 0,
@@ -268,6 +270,7 @@ class ElectroAnalyzer:
             self._seq_reset_count = 0
             self._history.clear()
             self._trajectory.clear()
+            self._fft_logs.clear()
             self._capture_mode = None
             self._capture_windows = []
             self._pending_baseline_channels_mv = None
@@ -282,6 +285,7 @@ class ElectroAnalyzer:
             self._state["position"] = None
             self._state["trajectory"] = []
             self._state["trajectory_enabled"] = False
+            self._state["fft_log_count"] = 0
             self._state["seq_gap_count"] = 0
             self._state["seq_filled_count"] = 0
             self._state["seq_reset_count"] = 0
@@ -372,7 +376,14 @@ class ElectroAnalyzer:
             state["history"] = list(self._history)
             state["trajectory"] = list(self._trajectory)
             state["trajectory_enabled"] = bool(self._compute_enabled and self._state.get("position"))
+            state["fft_log_count"] = len(self._fft_logs)
             return state
+
+    def export_fft_logs(self, limit: int = 6000) -> List[Dict[str, object]]:
+        with self._lock:
+            if limit is None or limit <= 0:
+                return list(self._fft_logs)
+            return list(self._fft_logs)[-int(limit):]
 
     def _append_history(self, snapshot: Dict[str, object]) -> None:
         entry = {
@@ -536,6 +547,25 @@ class ElectroAnalyzer:
             return
         filled_samples = sum(1 for row in window if row.get("filled"))
         received_samples = len(window) - filled_samples
+        position_samples = []
+        last_position = None
+        for row in window:
+            pose = row.get("pose")
+            if pose is not None and pose.get("valid"):
+                last_position = pose
+            elif last_position is None:
+                last_position = self._last_pose
+            if last_position is not None and last_position.get("valid"):
+                position_samples.append(last_position)
+        if position_samples:
+            mean_position = {
+                "x": round(sum(float(p.get("x", 0.0)) for p in position_samples) / len(position_samples), 3),
+                "y": round(sum(float(p.get("y", 0.0)) for p in position_samples) / len(position_samples), 3),
+                "z": round(sum(float(p.get("z", 0.0)) for p in position_samples) / len(position_samples), 3),
+                "count": len(position_samples),
+            }
+        else:
+            mean_position = None
 
         with self._lock:
             pose = window[-1].get("pose") or self._last_pose
@@ -571,6 +601,7 @@ class ElectroAnalyzer:
                 "seq_reset_count": self._seq_reset_count,
                 "window_received_samples": received_samples,
                 "window_filled_samples": filled_samples,
+                "window_mean_position": mean_position,
             })
             if pose is not None:
                 position = {
@@ -591,6 +622,30 @@ class ElectroAnalyzer:
                 self._state["trajectory_enabled"] = bool(self._compute_enabled and position["valid"])
             else:
                 self._state["trajectory_enabled"] = False
+            if self._compute_enabled and self._capture_mode is None:
+                fft_log = {
+                    "ts": window[-1]["ts"],
+                    "created_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+                    "seq_start": window[0]["seq"],
+                    "seq_end": window[-1]["seq"],
+                    "seq_range": [window[0]["seq"], window[-1]["seq"]],
+                    "peak_freq_hz": self._state.get("peak_freq_hz"),
+                    "peak_amp_mv": self._state.get("peak_amp_mv"),
+                    "target_amp_mv": self._state.get("target_amp_mv"),
+                    "raw_feature_mv": self._state.get("raw_feature_mv"),
+                    "delta_feature_mv": self._state.get("delta_feature_mv"),
+                    "channel_amp_mv": list(self._state.get("channel_amp_mv") or []),
+                    "channel_delta_mv": list(self._state.get("channel_delta_mv") or []),
+                    "position": position if pose is not None else self._state.get("position"),
+                    "window_mean_position": mean_position,
+                    "window_received_samples": received_samples,
+                    "window_filled_samples": filled_samples,
+                    "seq_gap_count": self._seq_gap_count,
+                    "seq_filled_count": self._seq_filled_count,
+                    "seq_reset_count": self._seq_reset_count,
+                }
+                self._fft_logs.append(fft_log)
+                self._state["fft_log_count"] = len(self._fft_logs)
             self._append_history(dict(self._state))
 
     def _loop(self) -> None:
