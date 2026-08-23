@@ -390,6 +390,12 @@ class ElectroAnalyzer:
                 return list(self._fft_logs)
             return list(self._fft_logs)[-int(limit):]
 
+    def export_trajectory(self, limit: int = 600) -> List[Dict[str, object]]:
+        with self._lock:
+            if limit is None or limit <= 0:
+                return list(self._trajectory)
+            return list(self._trajectory)[-int(limit):]
+
     def clear_fft_logs(self) -> Dict[str, object]:
         with self._lock:
             self._fft_logs.clear()

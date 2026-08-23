@@ -57,6 +57,9 @@ class API:
     def export_fft_logs(self, limit=6000):
         return self.analyzer.export_fft_logs(limit)
 
+    def export_trajectory(self, limit=600):
+        return self.analyzer.export_trajectory(limit)
+
     def set_compute_enabled(self, enabled):
         return self.analyzer.set_compute_enabled(enabled)
 
@@ -150,6 +153,15 @@ def export_fft_logs():
     except Exception:
         limit = 6000
     return json.dumps(api.export_fft_logs(limit))
+
+
+@app.route("/export_trajectory")
+def export_trajectory():
+    try:
+        limit = int(flask_request.args.get("limit", 600))
+    except Exception:
+        limit = 600
+    return json.dumps(api.export_trajectory(limit))
 
 
 @app.route("/set_compute/<enable>")

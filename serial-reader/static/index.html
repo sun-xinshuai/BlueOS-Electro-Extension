@@ -167,7 +167,10 @@
                         <div class="subtle" v-if="trajectoryVisible">ID {{ trajectoryLast.id }} X {{ trajectoryLast.x }} Y {{ trajectoryLast.y }} Z {{ trajectoryLast.z }}</div>
                         <div class="subtle" v-else>Shown after valid position data is recorded.</div>
                     </div>
-                    <v-btn small text :disabled="trajectory.length === 0" @click="clearTrajectoryLocal"><v-icon left small>mdi-map-marker-remove</v-icon>clear view</v-btn>
+                    <div class="d-flex align-center" style="gap:8px;flex-wrap:wrap">
+                        <v-btn small text :disabled="trajectory.length === 0" @click="exportTrajectory"><v-icon left small>mdi-file-export</v-icon>trajectory</v-btn>
+                        <v-btn small text :disabled="trajectory.length === 0" @click="clearTrajectoryLocal"><v-icon left small>mdi-map-marker-remove</v-icon>clear view</v-btn>
+                    </div>
                 </div>
                 <div v-if="trajectoryVisible" class="trajectory-wrap">
                     <svg class="trajectory-svg" viewBox="0 0 320 220" preserveAspectRatio="none">
@@ -445,6 +448,28 @@ new Vue({
                 this._download(JSON.stringify(rows, null, 2), `fft_logs_${stamp}.json`, 'application/json')
                 this.toast(`exported ${rows.length} fft logs`)
             }).catch(() => this.toast('fft log export failed', 'error'))
+        },
+        exportTrajectory() {
+            axios.get('/export_trajectory?limit=600', { timeout: 10000 }).then(r => {
+                const rows = r.data || []
+                if (!rows.length) {
+                    this.toast('no trajectory to export', 'warning')
+                    return
+                }
+                const header = ['ts','seq','pseq','id','x','y','z','valid']
+                const esc = v => {
+                    if (v == null) return ''
+                    const s = String(v)
+                    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+                }
+                const body = rows.map(row => [
+                    row.ts, row.seq, row.pseq, row.id, row.x, row.y, row.z, row.valid
+                ].map(esc).join(',')).join('\n')
+                const stamp = now()
+                this._download(`${header.join(',')}\n${body}`, `trajectory_${stamp}.csv`, 'text/csv')
+                this._download(JSON.stringify(rows, null, 2), `trajectory_${stamp}.json`, 'application/json')
+                this.toast(`exported ${rows.length} trajectory points`)
+            }).catch(() => this.toast('trajectory export failed', 'error'))
         },
         toggleCompute() {
             const next = !this.telem.compute_enabled
