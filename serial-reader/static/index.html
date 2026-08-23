@@ -96,7 +96,7 @@
                 <div class="d-flex align-center justify-space-between flex-wrap mb-2">
                     <div>
                         <div class="section-title mb-1">Electro Location</div>
-                        <div class="subtle">Start to compute channel amplitudes, log snapshots, and draw trajectory when valid position data is available.</div>
+                        <div class="subtle">Start runs FFT logging and UWB trajectory recording together. Stop freezes both outputs.</div>
                     </div>
                     <div class="d-flex align-center" style="gap:8px;flex-wrap:wrap">
                         <v-btn small :color="telem.compute_enabled ? 'error' : 'primary'" @click="toggleCompute">
@@ -165,7 +165,7 @@
                     <div>
                         <div class="section-title mb-1">ELectro Trajectory</div>
                         <div class="subtle" v-if="trajectoryVisible">ID {{ trajectoryLast.id }} X {{ trajectoryLast.x }} Y {{ trajectoryLast.y }} Z {{ trajectoryLast.z }}</div>
-                        <div class="subtle" v-else>Shown after valid position data is recorded.</div>
+                        <div class="subtle" v-else>Shown after valid UWB position data is recorded.</div>
                     </div>
                     <div class="d-flex align-center" style="gap:8px;flex-wrap:wrap">
                         <v-btn small text :disabled="trajectory.length === 0" @click="exportTrajectory"><v-icon left small>mdi-file-export</v-icon>trajectory</v-btn>
@@ -185,7 +185,7 @@
                 </div>
 
                 <div class="small-note mt-2">
-                    The trajectory is cleared on Start and retained after Stop.
+                    Start clears old FFT logs and UWB trajectory, then begins a new run. Stop retains the current results.
                 </div>
             </v-card>
         </v-col>
@@ -354,8 +354,8 @@ new Vue({
             return this.telem.ready ? 'warning' : 'info'
         },
         analysisStatusText() {
-            if (!this.telem.compute_enabled) return 'Click Start to update channel amplitudes and record FFT logs.'
-            return 'Running. The trajectory is shown when valid position data is available.'
+            if (!this.telem.compute_enabled) return 'Click Start to run FFT logging and UWB trajectory recording.'
+            return 'Running. FFT logs and UWB trajectory are being recorded.'
         },
     },
     methods: {

@@ -144,6 +144,7 @@ class ElectroAnalyzer:
         self._pending_baseline_channels_mv = None
         self._pending_baseline_feature_mv = None
         self._compute_enabled = False
+        self._trajectory_recording = False
 
         self._state = self._empty_state()
         self._sync_baseline_state()
@@ -154,6 +155,7 @@ class ElectroAnalyzer:
         self._state["baseline_saved_at"] = self._baseline_saved_at
         self._state["baseline_source"] = self._baseline_source
         self._state["compute_enabled"] = self._compute_enabled
+        self._state["trajectory_recording"] = self._trajectory_recording
         self._state["pending_baseline_ready"] = self._pending_baseline_feature_mv is not None
         self._state["pending_baseline_feature_mv"] = self._pending_baseline_feature_mv
         if self._baseline_channels_mv is not None:
@@ -177,6 +179,7 @@ class ElectroAnalyzer:
             "baseline_saved_at": self._baseline_saved_at,
             "baseline_source": self._baseline_source,
             "compute_enabled": self._compute_enabled,
+            "trajectory_recording": self._trajectory_recording,
             "pending_baseline_ready": self._pending_baseline_feature_mv is not None,
             "pending_baseline_feature_mv": self._pending_baseline_feature_mv,
             "capturing_null": False,
@@ -274,6 +277,10 @@ class ElectroAnalyzer:
             self._capture_windows = []
             self._pending_baseline_channels_mv = None
             self._pending_baseline_feature_mv = None
+            self._compute_enabled = False
+            self._trajectory_recording = False
+            self._state["compute_enabled"] = False
+            self._state["trajectory_recording"] = False
             self._state["capturing_null"] = False
             self._state["null_progress"] = 0.0
             self._state["null_windows_collected"] = 0
@@ -293,15 +300,20 @@ class ElectroAnalyzer:
 
     def set_compute_enabled(self, enabled: bool) -> Dict[str, object]:
         with self._lock:
-            was_enabled = self._compute_enabled
-            self._compute_enabled = bool(enabled)
+            was_running = self._compute_enabled or self._trajectory_recording
+            is_running = bool(enabled)
+            self._compute_enabled = is_running
+            self._trajectory_recording = is_running
             self._state["compute_enabled"] = self._compute_enabled
-            if self._compute_enabled and not was_enabled:
+            self._state["trajectory_recording"] = self._trajectory_recording
+            if is_running and not was_running:
                 self._trajectory.clear()
+                self._fft_logs.clear()
                 self._state["trajectory"] = []
+                self._state["fft_log_count"] = 0
                 self._state["trajectory_enabled"] = False
-            self._state["trajectory_enabled"] = bool(self._compute_enabled and self._state.get("position"))
-            if not self._compute_enabled:
+            self._state["trajectory_enabled"] = bool(is_running and self._state.get("position"))
+            if not is_running:
                 channel_amp = self._state.get("channel_amp_mv") or []
                 self._state["ready"] = bool(channel_amp and channel_amp[0] is not None)
                 self._state["trajectory_enabled"] = False
@@ -380,7 +392,8 @@ class ElectroAnalyzer:
                 state["baseline_channel_amp_mv"] = None
             state["history"] = list(self._history)
             state["trajectory"] = list(self._trajectory)
-            state["trajectory_enabled"] = bool(self._compute_enabled and self._state.get("position"))
+            state["trajectory_recording"] = self._trajectory_recording
+            state["trajectory_enabled"] = self._trajectory_recording
             state["fft_log_count"] = len(self._fft_logs)
             return state
 
@@ -462,7 +475,7 @@ class ElectroAnalyzer:
         }
         with self._lock:
             self._state["position"] = position
-            if self._compute_enabled and self._capture_mode is None:
+            if self._trajectory_recording and self._capture_mode is None:
                 if not self._trajectory or self._trajectory[-1].get("pseq") != position["pseq"]:
                     self._trajectory.append(position)
                 self._state["trajectory_enabled"] = True
@@ -658,7 +671,7 @@ class ElectroAnalyzer:
                 }
                 self._state["position"] = position
                 self._state["trajectory"] = list(self._trajectory)
-                self._state["trajectory_enabled"] = bool(self._compute_enabled and position["valid"])
+                self._state["trajectory_enabled"] = bool(self._trajectory_recording and position["valid"])
             else:
                 self._state["trajectory_enabled"] = False
             if self._compute_enabled and self._capture_mode is None:
