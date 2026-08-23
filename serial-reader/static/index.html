@@ -45,6 +45,10 @@
     .channel-track { width: 18px; height: 140px; border-radius: 5px; background: #e5e7eb; display: flex; align-items: flex-end; overflow: hidden; }
     .channel-fill { width: 100%; min-height: 2px; border-radius: 5px 5px 0 0; transition: height .15s ease; }
     .channel-value, .channel-delta { font-family: monospace; color: #475467; text-align: center; white-space: nowrap; }
+    .log-meter { min-width: 220px; max-width: 360px; flex: 1 1 260px; }
+    .log-meter-head { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:12px; color:#475467; margin-bottom:4px; }
+    .log-meter-track { height: 7px; border-radius: 999px; background:#e5e7eb; overflow:hidden; }
+    .log-meter-fill { height: 100%; border-radius: 999px; background:#0369a1; transition: width .15s ease; }
     .trajectory-wrap { border: 1px solid #dbe2ea; border-radius: 6px; background: #ffffff; height: 260px; position: relative; }
     .trajectory-svg { width: 100%; height: 100%; display: block; }
     .trajectory-grid { stroke: #eef2f7; stroke-width: 1; }
@@ -72,18 +76,6 @@
                 <span>{{ status.enabled ? 'reader enabled' : 'reader disabled' }}</span>
             </div>
             <div class="status-item">
-                <span class="dot" :class="telem.capturing_null ? 'dot-green' : 'dot-yellow'"></span>
-                <span>{{ telem.capturing_null ? 'null capturing' : 'null idle' }}</span>
-            </div>
-            <div class="status-item">
-                <span class="dot" :class="telem.pending_baseline_ready ? 'dot-green' : 'dot-yellow'"></span>
-                <span>{{ telem.pending_baseline_ready ? 'baseline pending' : 'no pending baseline' }}</span>
-            </div>
-            <div class="status-item">
-                <span class="dot" :class="telem.baseline_ready ? 'dot-green' : 'dot-yellow'"></span>
-                <span>{{ telem.baseline_ready ? 'baseline saved' : 'baseline missing' }}</span>
-            </div>
-            <div class="status-item">
                 <span class="dot" :class="telem.compute_enabled ? 'dot-green' : 'dot-yellow'"></span>
                 <span>{{ telem.compute_enabled ? 'FFT running' : 'FFT stopped' }}</span>
             </div>
@@ -92,7 +84,7 @@
             <div class="status-item">sample {{ telem.sample_rate_hz || 100 }} Hz</div>
             <div class="status-item">target {{ telem.target_hz || 20 }} Hz</div>
             <div class="status-item">cond {{ telem.conductivity_uS_cm || 800 }} uS/cm</div>
-            <div class="status-item">fft {{ telem.fft_log_count || 0 }}</div>
+            <div class="status-item">fft logs {{ fftLogCount }}/6000</div>
             <div class="status-item">win {{ telem.window_received_samples || 0 }}/{{ telem.window_filled_samples || 0 }} rx/fill</div>
             <div class="status-item">seq gaps {{ telem.seq_gap_count || 0 }}</div>
         </div>
@@ -103,19 +95,24 @@
             <v-card outlined class="pa-3">
                 <div class="d-flex align-center justify-space-between flex-wrap mb-2">
                     <div>
-                        <div class="section-title mb-1">FFT baseline and trajectory</div>
-                        <div class="subtle">Capture null baseline, run FFT, then view the current trajectory while computation is enabled.</div>
+                        <div class="section-title mb-1">FFT and trajectory</div>
+                        <div class="subtle">Start FFT to compute channel amplitudes, log snapshots, and show trajectory when valid position data is available.</div>
                     </div>
                     <div class="d-flex align-center" style="gap:8px;flex-wrap:wrap">
-                        <v-btn small color="primary" :disabled="telem.capturing_null" @click="startNull"><v-icon left small>mdi-record-circle</v-icon>start null</v-btn>
-                        <v-btn small color="warning" :disabled="!telem.capturing_null" @click="stopNull"><v-icon left small>mdi-stop-circle</v-icon>stop null</v-btn>
-                        <v-btn small color="secondary" :disabled="!telem.pending_baseline_ready" @click="saveBaseline"><v-icon left small>mdi-content-save</v-icon>save baseline</v-btn>
-                    <v-btn small :color="telem.compute_enabled ? 'error' : 'primary'" :disabled="telem.capturing_null" @click="toggleCompute">
+                        <v-btn small :color="telem.compute_enabled ? 'error' : 'primary'" @click="toggleCompute">
                             <v-icon left small>{{ telem.compute_enabled ? 'mdi-pause' : 'mdi-play' }}</v-icon>{{ telem.compute_enabled ? 'stop FFT' : 'start FFT' }}
                         </v-btn>
+                        <div class="log-meter">
+                            <div class="log-meter-head">
+                                <span>recorded FFT logs</span>
+                                <strong>{{ fftLogCount }} / 6000</strong>
+                            </div>
+                            <div class="log-meter-track">
+                                <div class="log-meter-fill" :style="{ width: fftLogPct + '%' }"></div>
+                            </div>
+                        </div>
                         <v-btn small text @click="exportFftLogs"><v-icon left small>mdi-file-export</v-icon>fft logs</v-btn>
-                        <v-btn small text @click="loadBaseline"><v-icon left small>mdi-restore</v-icon>reload</v-btn>
-                        <v-btn small text color="error" @click="clearBaseline"><v-icon left small>mdi-delete-forever</v-icon>clear</v-btn>
+                        <v-btn small text color="error" :disabled="!telem.fft_log_count" @click="clearFftLogs"><v-icon left small>mdi-delete</v-icon>clear fft logs</v-btn>
                     </div>
                 </div>
 
@@ -144,20 +141,8 @@
 
                 <v-row no-gutters>
                     <v-col cols="6" sm="3" class="metric">
-                        <div class="metric-num" style="font-size:22px;color:#7c3aed">{{ f3(telem.baseline_feature_mv) }}</div>
-                        <div class="metric-lbl">saved baseline</div>
-                    </v-col>
-                    <v-col cols="6" sm="3" class="metric">
-                        <div class="metric-num" style="font-size:22px;color:#7c3aed">{{ f3(telem.pending_baseline_feature_mv) }}</div>
-                        <div class="metric-lbl">pending baseline</div>
-                    </v-col>
-                    <v-col cols="6" sm="3" class="metric">
-                        <div class="metric-num" style="font-size:22px;color:#0f766e">{{ telem.null_windows_collected || 0 }}</div>
-                        <div class="metric-lbl">null windows</div>
-                    </v-col>
-                    <v-col cols="6" sm="3" class="metric">
-                        <div class="metric-num" style="font-size:22px;color:#0369a1">{{ telem.fft_log_count || 0 }}</div>
-                        <div class="metric-lbl">fft logs</div>
+                        <div class="metric-num" style="font-size:22px;color:#0369a1">{{ fftLogCount }}</div>
+                        <div class="metric-lbl">recorded FFT logs</div>
                     </v-col>
                 </v-row>
 
@@ -308,6 +293,12 @@ new Vue({
             const mean = vals.reduce((a, b) => a + b, 0) / vals.length
             return { min, max, mean, range: Math.max(1e-6, max - min) }
         },
+        fftLogCount() {
+            return Number(this.telem.fft_log_count || 0)
+        },
+        fftLogPct() {
+            return Math.max(0, Math.min(100, this.fftLogCount / 6000 * 100))
+        },
         filteredLines() {
             const q = (this.filterText || '').trim().toLowerCase()
             const src = this.lines.slice(-this.lineCap)
@@ -356,20 +347,11 @@ new Vue({
             return this.trajectoryScreenPoints.length ? this.trajectoryScreenPoints[this.trajectoryScreenPoints.length - 1] : null
         },
         alertType() {
-            if (this.telem.capturing_null) return 'info'
-            if (this.telem.pending_baseline_ready) return 'success'
             if (this.telem.compute_enabled) return 'success'
-            return this.telem.baseline_ready ? 'warning' : 'error'
+            return this.telem.ready ? 'warning' : 'info'
         },
         analysisStatusText() {
-            if (this.telem.capturing_null) {
-                return `Collecting null windows: ${this.telem.null_windows_collected || 0}. Click stop null when the ROV is stable in open water.`
-            }
-            if (this.telem.pending_baseline_ready) {
-                return `Null capture stopped. Pending baseline feature: ${this.f3(this.telem.pending_baseline_feature_mv)} mV. Click save baseline.`
-            }
-            if (!this.telem.baseline_ready) return 'No saved baseline. Capture null, stop null, then save baseline.'
-            if (!this.telem.compute_enabled) return 'Baseline is ready. Click start FFT to update channel amplitudes.'
+            if (!this.telem.compute_enabled) return 'Click start FFT to update channel amplitudes and record FFT logs.'
             return 'FFT is running. The trajectory is shown when valid position data is available.'
         },
     },
@@ -464,24 +446,6 @@ new Vue({
                 this.toast(`exported ${rows.length} fft logs`)
             }).catch(() => this.toast('fft log export failed', 'error'))
         },
-        startNull() {
-            axios.get('/capture_null').then(r => {
-                this.telem = r.data || this.telem
-                this.toast('null capture started')
-            }).catch(() => this.toast('capture failed', 'error'))
-        },
-        stopNull() {
-            axios.get('/stop_null_capture', { timeout: 5000 }).then(r => {
-                this.telem = r.data || this.telem
-                this.toast(this.telem.pending_baseline_ready ? 'null capture stopped' : 'no null windows collected', this.telem.pending_baseline_ready ? 'success' : 'warning')
-            }).catch(() => this.toast('stop failed', 'error'))
-        },
-        saveBaseline() {
-            axios.get('/save_baseline', { timeout: 5000 }).then(r => {
-                this.telem = r.data || this.telem
-                this.toast(this.telem.baseline_ready ? 'baseline saved' : 'baseline not ready', this.telem.baseline_ready ? 'success' : 'warning')
-            }).catch(() => this.toast('save failed', 'error'))
-        },
         toggleCompute() {
             const next = !this.telem.compute_enabled
             axios.get(`/set_compute/${next}`).then(r => {
@@ -489,17 +453,11 @@ new Vue({
                 this.toast(next ? 'FFT started' : 'FFT stopped')
             }).catch(() => this.toast('compute switch failed', 'error'))
         },
-        clearBaseline() {
-            axios.get('/clear_baseline').then(() => {
-                this.toast('baseline cleared')
-                this.pollElectro()
-            })
-        },
-        loadBaseline() {
-            axios.get('/load_baseline').then(r => {
-                this.toast(r.data ? 'baseline loaded' : 'baseline missing', r.data ? 'success' : 'warning')
-                this.pollElectro()
-            }).catch(() => this.toast('load failed', 'error'))
+        clearFftLogs() {
+            axios.get('/clear_fft_logs', { timeout: 5000 }).then(r => {
+                this.telem.fft_log_count = (r.data && r.data.fft_log_count) || 0
+                this.toast('fft logs cleared')
+            }).catch(() => this.toast('clear fft logs failed', 'error'))
         },
         channelDelta(i) {
             const arr = this.telem.channel_delta_mv || []

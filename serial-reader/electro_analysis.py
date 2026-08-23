@@ -146,7 +146,6 @@ class ElectroAnalyzer:
         self._compute_enabled = False
 
         self._state = self._empty_state()
-        self.load_baseline()
         self._sync_baseline_state()
 
     def _sync_baseline_state(self) -> None:
@@ -298,7 +297,8 @@ class ElectroAnalyzer:
             self._state["compute_enabled"] = self._compute_enabled
             self._state["trajectory_enabled"] = bool(self._compute_enabled and self._state.get("position"))
             if not self._compute_enabled:
-                self._state["ready"] = self._baseline_feature_mv is not None
+                channel_amp = self._state.get("channel_amp_mv") or []
+                self._state["ready"] = bool(channel_amp and channel_amp[0] is not None)
                 self._state["trajectory_enabled"] = False
         return self.get_state()
 
@@ -384,6 +384,12 @@ class ElectroAnalyzer:
             if limit is None or limit <= 0:
                 return list(self._fft_logs)
             return list(self._fft_logs)[-int(limit):]
+
+    def clear_fft_logs(self) -> Dict[str, object]:
+        with self._lock:
+            self._fft_logs.clear()
+            self._state["fft_log_count"] = 0
+            return {"ok": True, "fft_log_count": 0}
 
     def _append_history(self, snapshot: Dict[str, object]) -> None:
         entry = {
@@ -581,7 +587,7 @@ class ElectroAnalyzer:
                 self._state["null_progress"] = 0.0
 
             self._state.update({
-                "ready": self._baseline_feature_mv is not None,
+                "ready": True,
                 "baseline_ready": self._baseline_feature_mv is not None,
                 "baseline_feature_mv": self._baseline_feature_mv,
                 "baseline_saved_at": self._baseline_saved_at,

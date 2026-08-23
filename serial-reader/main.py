@@ -57,24 +57,11 @@ class API:
     def export_fft_logs(self, limit=6000):
         return self.analyzer.export_fft_logs(limit)
 
-    def capture_null(self, seconds=8.0):
-        return self.analyzer.start_null_capture(seconds)
-
-    def stop_null_capture(self):
-        return self.analyzer.stop_null_capture()
-
-    def save_baseline(self):
-        return self.analyzer.save_baseline()
-
     def set_compute_enabled(self, enabled):
         return self.analyzer.set_compute_enabled(enabled)
 
-    def clear_baseline(self):
-        self.analyzer.clear_baseline()
-        return True
-
-    def load_baseline(self):
-        return self.analyzer.load_baseline()
+    def clear_fft_logs(self):
+        return self.analyzer.clear_fft_logs()
 
 
 driver = SerialDriver()
@@ -165,25 +152,6 @@ def export_fft_logs():
     return json.dumps(api.export_fft_logs(limit))
 
 
-@app.route("/capture_null")
-def capture_null():
-    try:
-        seconds = float(flask_request.args.get("seconds", 8.0))
-    except Exception:
-        seconds = 8.0
-    return json.dumps(api.capture_null(seconds))
-
-
-@app.route("/stop_null_capture")
-def stop_null_capture():
-    return json.dumps(api.stop_null_capture())
-
-
-@app.route("/save_baseline")
-def save_baseline():
-    return json.dumps(api.save_baseline())
-
-
 @app.route("/set_compute/<enable>")
 def set_compute(enable):
     if enable in ["true", "false"]:
@@ -191,14 +159,9 @@ def set_compute(enable):
     return json.dumps(False)
 
 
-@app.route("/clear_baseline")
-def clear_baseline():
-    return json.dumps(api.clear_baseline())
-
-
-@app.route("/load_baseline")
-def load_baseline():
-    return json.dumps(api.load_baseline())
+@app.route("/clear_fft_logs")
+def clear_fft_logs():
+    return json.dumps(api.clear_fft_logs())
 
 
 if __name__ == "__main__":
