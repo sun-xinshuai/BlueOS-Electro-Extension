@@ -280,6 +280,7 @@ new Vue({
             showTs: true,
             lineCap: 1200,
             trajectoryClearBeforePseq: null,
+            trajectoryBounds: { minX: 0, maxX: 2000, minY: 0, maxY: 4000 },
             _lineBusy: false,
             snack: { show: false, text: '', color: 'success' },
         }
@@ -321,26 +322,16 @@ new Vue({
             return this.trajectory.length ? this.trajectory[this.trajectory.length - 1] : { id: '--', x: '--', y: '--', z: '--' }
         },
         trajectoryScale() {
-            const pts = this.trajectory
-            if (!pts.length) return { minX: -1, maxX: 1, minY: -1, maxY: 1 }
-            let minX = Math.min(...pts.map(p => Number(p.x)))
-            let maxX = Math.max(...pts.map(p => Number(p.x)))
-            let minY = Math.min(...pts.map(p => Number(p.y)))
-            let maxY = Math.max(...pts.map(p => Number(p.y)))
-            const padX = Math.max(20, (maxX - minX) * 0.15)
-            const padY = Math.max(20, (maxY - minY) * 0.15)
-            if (minX === maxX) { minX -= 20; maxX += 20 } else { minX -= padX; maxX += padX }
-            if (minY === maxY) { minY -= 20; maxY += 20 } else { minY -= padY; maxY += padY }
-            return { minX, maxX, minY, maxY }
+            return this.trajectoryBounds
         },
         trajectoryScreenPoints() {
             const s = this.trajectoryScale
             const w = 272
             const h = 188
             return this.trajectory.map(p => {
-                const nx = (Number(p.x) - s.minX) / Math.max(1e-6, s.maxX - s.minX)
-                const ny = (Number(p.y) - s.minY) / Math.max(1e-6, s.maxY - s.minY)
-                return { x: 24 + nx * w, y: 204 - ny * h }
+                const nx = Math.max(0, Math.min(1, (Number(p.x) - s.minX) / Math.max(1e-6, s.maxX - s.minX)))
+                const ny = Math.max(0, Math.min(1, (Number(p.y) - s.minY) / Math.max(1e-6, s.maxY - s.minY)))
+                return { x: 24 + nx * w, y: 16 + ny * h }
             })
         },
         trajectoryPolyline() {
@@ -562,7 +553,7 @@ new Vue({
         this.pollElectro()
         this.fetchLines()
         setInterval(() => this.pollStatus(), 1000)
-        setInterval(() => this.pollElectro(), 150)
+        setInterval(() => this.pollElectro(), 80)
         setInterval(() => this.fetchLines(), 100)
         setInterval(() => this.loadPorts(), 10000)
         window.addEventListener('resize', () => this.scrollTerminal())

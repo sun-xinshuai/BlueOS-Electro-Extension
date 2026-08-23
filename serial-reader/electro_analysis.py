@@ -310,6 +310,7 @@ class ElectroAnalyzer:
                 self._trajectory.clear()
                 self._fft_logs.clear()
                 self._state["trajectory"] = []
+                self._state["position"] = None
                 self._state["fft_log_count"] = 0
                 self._state["trajectory_enabled"] = False
             self._state["trajectory_enabled"] = bool(is_running and self._state.get("position"))
@@ -476,7 +477,15 @@ class ElectroAnalyzer:
         with self._lock:
             self._state["position"] = position
             if self._trajectory_recording and self._capture_mode is None:
-                if not self._trajectory or self._trajectory[-1].get("pseq") != position["pseq"]:
+                last = self._trajectory[-1] if self._trajectory else None
+                changed = (
+                    last is None
+                    or last.get("pseq") != position["pseq"]
+                    or last.get("x") != position["x"]
+                    or last.get("y") != position["y"]
+                    or last.get("z") != position["z"]
+                )
+                if changed:
                     self._trajectory.append(position)
                 self._state["trajectory_enabled"] = True
             else:
@@ -669,7 +678,6 @@ class ElectroAnalyzer:
                     "ts": window[-1]["ts"],
                     "seq": window[-1]["seq"],
                 }
-                self._state["position"] = position
                 self._state["trajectory"] = list(self._trajectory)
                 self._state["trajectory_enabled"] = bool(self._trajectory_recording and position["valid"])
             else:
@@ -710,4 +718,4 @@ class ElectroAnalyzer:
                     self.ingest_history(entries)
             except Exception:
                 pass
-            time.sleep(0.08)
+            time.sleep(0.02)
