@@ -81,7 +81,7 @@
             </div>
             <div class="status-item">
                 <span class="dot" :class="telem.trajectory_recording ? 'dot-green' : 'dot-yellow'"></span>
-                <span>UWB {{ telem.trajectory_recording ? 'recording' : 'stopped' }}</span>
+                <span>Location {{ telem.trajectory_recording ? 'recording' : 'stopped' }}</span>
             </div>
             <div class="status-item">history {{ status.history_size || 0 }}</div>
             <div class="status-item">rx {{ fmtAge(status.last_rx_age) }}</div>
@@ -100,7 +100,7 @@
                 <div class="d-flex align-center justify-space-between flex-wrap mb-2">
                     <div>
                         <div class="section-title mb-1">Electro Location</div>
-                        <div class="subtle">FFT logging and UWB trajectory recording are controlled independently.</div>
+                        <div class="subtle">FFT logging and Location trajectory recording are controlled independently.</div>
                     </div>
                     <div class="d-flex align-center" style="gap:8px;flex-wrap:wrap">
                         <v-btn small :color="telem.compute_enabled ? 'error' : 'primary'" @click="toggleCompute">
@@ -169,11 +169,11 @@
                     <div>
                         <div class="section-title mb-1">ELectro Trajectory</div>
                         <div class="subtle" v-if="trajectoryVisible">ID {{ trajectoryLast.id }} X {{ trajectoryLast.x }} Y {{ trajectoryLast.y }} Z {{ trajectoryLast.z }}</div>
-                        <div class="subtle" v-else>Shown after valid UWB position data is recorded.</div>
+                        <div class="subtle" v-else>Shown after valid Location data is recorded.</div>
                     </div>
                     <div class="d-flex align-center" style="gap:8px;flex-wrap:wrap">
                         <v-btn small :color="telem.trajectory_recording ? 'error' : 'primary'" @click="toggleTrajectory">
-                            <v-icon left small>{{ telem.trajectory_recording ? 'mdi-pause' : 'mdi-map-marker-path' }}</v-icon>{{ telem.trajectory_recording ? 'Stop UWB' : 'Start UWB' }}
+                            <v-icon left small>{{ telem.trajectory_recording ? 'mdi-pause' : 'mdi-map-marker-path' }}</v-icon>{{ telem.trajectory_recording ? 'Stop Location' : 'Start Location' }}
                         </v-btn>
                         <v-btn small text :disabled="trajectory.length === 0" @click="exportTrajectory"><v-icon left small>mdi-file-export</v-icon>trajectory</v-btn>
                         <v-btn small text :disabled="trajectory.length === 0" @click="clearTrajectoryLocal"><v-icon left small>mdi-map-marker-remove</v-icon>clear view</v-btn>
@@ -192,7 +192,7 @@
                 </div>
 
                 <div class="small-note mt-2">
-                    Start UWB clears the old trajectory and begins a new track. Stop UWB retains the current track.
+                    Start Location clears the old trajectory and begins a new track. Stop Location retains the current track.
                 </div>
             </v-card>
         </v-col>
@@ -355,7 +355,7 @@ new Vue({
         },
         analysisStatusText() {
             if (this.telem.compute_enabled) return 'FFT logging is running.'
-            return 'FFT logging is stopped. UWB trajectory has its own control.'
+            return 'FFT logging is stopped. Location trajectory has its own control.'
         },
     },
     methods: {
