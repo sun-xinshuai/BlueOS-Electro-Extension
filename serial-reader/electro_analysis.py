@@ -135,7 +135,7 @@ class ElectroAnalyzer:
         self._seq_reset_count = 0
 
         self._history = deque(maxlen=240)
-        self._trajectory = deque(maxlen=600)
+        self._trajectory = deque(maxlen=10000)
         self._fft_logs = deque(maxlen=6000)
         self._baseline_channels_mv = None
         self._baseline_feature_mv = None
@@ -418,7 +418,7 @@ class ElectroAnalyzer:
                 return list(self._fft_logs)
             return list(self._fft_logs)[-int(limit):]
 
-    def export_trajectory(self, limit: int = 600) -> List[Dict[str, object]]:
+    def export_trajectory(self, limit: int = 10000) -> List[Dict[str, object]]:
         with self._lock:
             if limit is None or limit <= 0:
                 return list(self._trajectory)

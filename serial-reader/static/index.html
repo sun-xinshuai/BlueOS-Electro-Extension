@@ -287,7 +287,7 @@ new Vue({
             showTs: true,
             lineCap: 1200,
             trajectoryClearBeforePseq: null,
-            trajectoryBounds: { minX: 0, maxX: 2000, minY: 0, maxY: 4000 },
+            trajectoryBounds: { minX: 0, maxX: 200, minY: 0, maxY: 400 },
             _lineBusy: false,
             snack: { show: false, text: '', color: 'success' },
         }
@@ -322,7 +322,7 @@ new Vue({
             const filtered = cutoff == null ? rows : rows.filter(p => Number(p.pseq) > Number(cutoff))
             return filtered
                 .filter(p => p && p.valid && Number.isFinite(Number(p.x)) && Number.isFinite(Number(p.y)))
-                .slice(-300)
+                .slice(-1000)
         },
         trajectoryVisible() {
             return this.trajectory.length > 0
@@ -450,7 +450,7 @@ new Vue({
             }).catch(() => this.toast('fft log export failed', 'error'))
         },
         exportTrajectory() {
-            axios.get('/export_trajectory?limit=600', { timeout: 10000 }).then(r => {
+            axios.get('/export_trajectory?limit=10000', { timeout: 10000 }).then(r => {
                 const rows = r.data || []
                 if (!rows.length) {
                     this.toast('no trajectory to export', 'warning')
