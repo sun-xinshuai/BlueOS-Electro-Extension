@@ -26,7 +26,7 @@ class API:
     def get_history_since(self, since, limit=2000):
         return self.driver.get_history_since(since, limit)
 
-    def export_history(self, limit=30000):
+    def export_history(self, limit=8000):
         return self.driver.export_history(limit)
 
     def set_enabled(self, enabled):
@@ -113,9 +113,9 @@ def get_history_since(since):
 @app.route("/export_history")
 def export_history():
     try:
-        limit = int(flask_request.args.get("limit", 30000))
+        limit = int(flask_request.args.get("limit", 8000))
     except Exception:
-        limit = 30000
+        limit = 8000
     return json.dumps(api.export_history(limit))
 
 

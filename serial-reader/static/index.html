@@ -406,7 +406,7 @@ new Vue({
             })
         },
         exportLog() {
-            axios.get('/export_history?limit=1024', { timeout: 10000 }).then(r => {
+            axios.get('/export_history?limit=8000', { timeout: 10000 }).then(r => {
                 const rows = r.data || []
                 const txt = rows.map(l => `[${l.timestamp}] ${l.raw}`).join('\n')
                 this._download(txt, `serial_${now()}.txt`, 'text/plain')

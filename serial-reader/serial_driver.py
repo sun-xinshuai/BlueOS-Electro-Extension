@@ -13,7 +13,7 @@ import serial
 import serial.tools.list_ports
 from loguru import logger
 
-MAX_HISTORY = 1024
+MAX_HISTORY = 8000
 DEFAULT_PORT = "/dev/ttyAMA0"
 #DEFAULT_PORT = "/dev/serial1"
 DEFAULT_BAUD = 115200
@@ -91,8 +91,8 @@ class SerialDriver:
         with self._history_lock:
             return list(self.history)
 
-    def export_history(self, limit: int = 30000) -> list:
-        limit = max(1, min(int(limit), 30000))
+    def export_history(self, limit: int = MAX_HISTORY) -> list:
+        limit = max(1, min(int(limit), MAX_HISTORY))
         with self._history_lock:
             snapshot = list(self.history)
         if len(snapshot) > limit:
