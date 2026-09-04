@@ -81,6 +81,7 @@ analyzer = ElectroAnalyzer(
     step_size=10,
     adc_full_scale_mv=10000.0,
     conductivity_uS_cm=800.0,
+    right_boundary_model_path=Path(__file__).with_name("right_boundary_model.json"),
 )
 api = API(driver, analyzer)
 

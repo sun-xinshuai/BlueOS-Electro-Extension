@@ -122,6 +122,12 @@
 
                 <v-alert dense text :type="alertType" class="mb-2">{{ analysisStatusText }}</v-alert>
 
+                <v-alert v-if="telem.right_boundary" dense outlined color="secondary" class="mb-2">
+                    Right boundary: {{ telem.right_boundary.valid ? f2(telem.right_boundary.distance_cm) + ' cm' : 'uncertain' }}
+                    <span v-if="telem.right_boundary.valid"> | confidence {{ f2(telem.right_boundary.confidence * 100) }}%</span>
+                    <span v-if="!telem.right_boundary.in_training_range"> | outside training range</span>
+                </v-alert>
+
                 <v-row no-gutters>
                     <v-col cols="6" sm="3" class="metric">
                         <div class="metric-num">{{ f2(telem.peak_freq_hz) }}</div>
@@ -424,7 +430,8 @@ new Vue({
                     'created_at','ts','seq_start','seq_end','peak_freq_hz','peak_amp_mv','target_amp_mv',
                     'raw_feature_mv','delta_feature_mv','window_rx','window_fill','seq_gaps','seq_filled','seq_resets',
                     'mean_x','mean_y','mean_z','mean_count','pos_id','pos_x','pos_y','pos_z',
-                    'ch0_mv','ch1_mv','ch2_mv','ch3_mv','ch4_mv','ch5_mv','ch6_mv','ch7_mv'
+                    'ch0_mv','ch1_mv','ch2_mv','ch3_mv','ch4_mv','ch5_mv','ch6_mv','ch7_mv',
+                    'right_boundary_side','right_boundary_distance_cm','right_boundary_confidence','right_boundary_valid'
                 ]
                 const esc = v => {
                     if (v == null) return ''
@@ -441,7 +448,11 @@ new Vue({
                         row.seq_gap_count, row.seq_filled_count, row.seq_reset_count,
                         mean.x, mean.y, mean.z, mean.count,
                         pos.id, pos.x, pos.y, pos.z,
-                        ch[0], ch[1], ch[2], ch[3], ch[4], ch[5], ch[6], ch[7]
+                        ch[0], ch[1], ch[2], ch[3], ch[4], ch[5], ch[6], ch[7],
+                        row.right_boundary && row.right_boundary.side,
+                        row.right_boundary && row.right_boundary.distance_cm,
+                        row.right_boundary && row.right_boundary.confidence,
+                        row.right_boundary && row.right_boundary.valid
                     ].map(esc).join(',')
                 }).join('\n')
                 const stamp = now()

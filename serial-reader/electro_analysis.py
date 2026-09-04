@@ -17,6 +17,8 @@ from collections import deque
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
+from right_boundary_model import RightBoundaryModel, load_optional
+
 
 SAMPLE_RE = re.compile(
     r"^(?:\[(?P<hh>\d\d):(?P<mm>\d\d):(?P<ss>\d\d)\.(?P<ms>\d{3})\]\s+)?"
@@ -105,6 +107,7 @@ class ElectroAnalyzer:
         step_size: int = 10,
         adc_full_scale_mv: float = 10000.0,
         conductivity_uS_cm: float = 800.0,
+        right_boundary_model_path: Optional[Path] = None,
     ):
         self.driver = driver
         self.baseline_path = Path(baseline_path)
@@ -114,6 +117,10 @@ class ElectroAnalyzer:
         self.step_size = int(step_size)
         self.adc_full_scale_mv = float(adc_full_scale_mv)
         self.conductivity_uS_cm = float(conductivity_uS_cm)
+        self.right_boundary_model_path = Path(right_boundary_model_path) if right_boundary_model_path else None
+        self._right_boundary_model: Optional[RightBoundaryModel] = None
+        if self.right_boundary_model_path is not None:
+            self._right_boundary_model = load_optional(self.right_boundary_model_path)
         self.max_gap_fill = 20
 
         self.ref_idx = [0, 1, 2, 3, 6, 7]
@@ -209,6 +216,7 @@ class ElectroAnalyzer:
             "window_received_samples": 0,
             "window_filled_samples": 0,
             "window_timestamp": None,
+            "right_boundary": None,
         }
 
     def start(self) -> None:
@@ -635,6 +643,12 @@ class ElectroAnalyzer:
         feats = self._compute_channel_amplitudes(window_mv)
         if not feats:
             return
+        right_boundary = None
+        if self._right_boundary_model is not None:
+            try:
+                right_boundary = self._right_boundary_model.predict(feats["channel_amp_mv"])
+            except Exception:
+                right_boundary = None
         filled_samples = sum(1 for row in window if row.get("filled"))
         received_samples = len(window) - filled_samples
         position_samples = []
@@ -692,6 +706,7 @@ class ElectroAnalyzer:
                 "window_received_samples": received_samples,
                 "window_filled_samples": filled_samples,
                 "window_mean_position": mean_position,
+                "right_boundary": right_boundary,
             })
             if pose is not None:
                 position = {
@@ -729,6 +744,7 @@ class ElectroAnalyzer:
                     "seq_gap_count": self._seq_gap_count,
                     "seq_filled_count": self._seq_filled_count,
                     "seq_reset_count": self._seq_reset_count,
+                    "right_boundary": right_boundary,
                 }
                 self._fft_logs.append(fft_log)
                 self._state["fft_log_count"] = len(self._fft_logs)
